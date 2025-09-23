@@ -51,13 +51,15 @@ fun LessonsScreen(navController: NavHostController) {
         LessonCard(
             title = "Evaluation",
             icon = Icons.Default.CheckCircle,
-            color = MaterialTheme.colorScheme.tertiary
+            color = MaterialTheme.colorScheme.tertiary,
+            onClick = { navController.navigate("evaluation") }
         )
 
         LessonCard(
             title = "Multiplayer",
             icon = Icons.Default.People,
-            color = MaterialTheme.colorScheme.error
+            color = MaterialTheme.colorScheme.error,
+            onClick = { navController.navigate("Multiplayer") }
         )
     }
 }
