@@ -86,8 +86,8 @@ fun EvaluationTestScreen(navController: NavController? = null) {
 
     // countdown & move to next sign
     LaunchedEffect(progress) {
-        val tickMs = 100L          // 👈 speed: tick interval
-        val decrement = 0.1f       // 👈 speed: how much time reduces per tick
+        val tickMs = 100L          //  speed: tick interval
+        val decrement = 0.1f       //  speed: how much time reduces per tick
         while (true) {
             delay(tickMs)
             if (timeLeft > 0f) {
