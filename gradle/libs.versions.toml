@@ -10,6 +10,10 @@ junit = "4.13.2"
 junitExt = "1.1.5"
 espresso = "3.5.1"
 runtimeSaveable = "1.9.0"
+litertSupportApi = "1.4.0"
+uiGraphics = "1.9.2"
+litertGpu = "1.4.0"
+foundation = "1.9.2"
 
 [libraries]
 # Core AndroidX
@@ -32,6 +36,10 @@ androidx-compose-runtime-saveable = { group = "androidx.compose.runtime", name =
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitExt" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
+litert-support-api = { group = "com.google.ai.edge.litert", name = "litert-support-api", version.ref = "litertSupportApi" }
+androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", version.ref = "uiGraphics" }
+litert-gpu = { group = "com.google.ai.edge.litert", name = "litert-gpu", version.ref = "litertGpu" }
+androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
