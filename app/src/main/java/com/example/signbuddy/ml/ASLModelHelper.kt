@@ -35,12 +35,17 @@ object ASLModelHelper {
         try {
             val modelBuffer = loadModelFile(context, "asl_model.tflite")
             val options = Interpreter.Options().apply {
-                // Use multiple threads for faster CPU inference
-                setNumThreads(4)
+                // Use fewer threads to reduce memory pressure
+                setNumThreads(2)
+                // Enable GPU delegate if available (optional)
+                // setUseNNAPI(true)
             }
 
             interpreter = Interpreter(modelBuffer, options)
             Log.d(TAG, "✅ ASL Model loaded successfully.")
+        } catch (e: OutOfMemoryError) {
+            Log.e(TAG, "❌ Out of memory loading ASL model", e)
+            System.gc()
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to load ASL model", e)
         }
@@ -73,35 +78,60 @@ object ASLModelHelper {
     fun imageProxyToBitmap(imageProxy: ImageProxy, rotationDegrees: Int, flip: Boolean): Bitmap {
         val image = imageProxy.image ?: throw IllegalStateException("Image is null")
 
-        val yBuffer = image.planes[0].buffer
-        val uBuffer = image.planes[1].buffer
-        val vBuffer = image.planes[2].buffer
+        try {
+            val yBuffer = image.planes[0].buffer
+            val uBuffer = image.planes[1].buffer
+            val vBuffer = image.planes[2].buffer
 
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
+            val ySize = yBuffer.remaining()
+            val uSize = uBuffer.remaining()
+            val vSize = vBuffer.remaining()
 
-        val nv21 = ByteArray(ySize + uSize + vSize)
-        yBuffer.get(nv21, 0, ySize)
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
+            val nv21 = ByteArray(ySize + uSize + vSize)
+            yBuffer.get(nv21, 0, ySize)
+            vBuffer.get(nv21, ySize, vSize)
+            uBuffer.get(nv21, ySize + vSize, uSize)
 
-        val yuvImage = YuvImage(nv21, ImageFormat.NV21, imageProxy.width, imageProxy.height, null)
-        val out = ByteArrayOutputStream()
-        yuvImage.compressToJpeg(Rect(0, 0, yuvImage.width, yuvImage.height), 100, out)
-        val imageBytes = out.toByteArray()
-        var bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+            val yuvImage = YuvImage(nv21, ImageFormat.NV21, imageProxy.width, imageProxy.height, null)
+            val out = ByteArrayOutputStream()
+            yuvImage.compressToJpeg(Rect(0, 0, yuvImage.width, yuvImage.height), 100, out)
+            val imageBytes = out.toByteArray()
+            var bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
 
-        // ✅ Rotate bitmap
-        val rotationMatrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
-        bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, rotationMatrix, true)
+            if (bitmap == null || bitmap.isRecycled) {
+                throw IllegalStateException("Failed to decode bitmap from image bytes")
+            }
 
-        // ✅ Mirror horizontally if using front camera
-        if (flip) {
-            val flipMatrix = Matrix().apply { preScale(-1f, 1f) }
-            bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, flipMatrix, true)
+            // ✅ Rotate bitmap
+            val rotationMatrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+            val rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, rotationMatrix, true)
+            
+            // Recycle original bitmap if it's different from rotated one
+            if (bitmap != rotatedBitmap) {
+                bitmap.recycle()
+            }
+            bitmap = rotatedBitmap
+
+            // ✅ Mirror horizontally if using front camera
+            if (flip) {
+                val flipMatrix = Matrix().apply { preScale(-1f, 1f) }
+                val flippedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, flipMatrix, true)
+                
+                // Recycle original bitmap if it's different from flipped one
+                if (bitmap != flippedBitmap) {
+                    bitmap.recycle()
+                }
+                bitmap = flippedBitmap
+            }
+
+            return bitmap
+        } catch (e: OutOfMemoryError) {
+            Log.e(TAG, "Out of memory converting ImageProxy to Bitmap", e)
+            System.gc()
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Error converting ImageProxy to Bitmap", e)
+            throw e
         }
-
-        return bitmap
     }
 }

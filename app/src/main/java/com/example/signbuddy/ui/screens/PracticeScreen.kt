@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight.Companion.SemiBold
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.example.signbuddy.ui.components.*
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
@@ -67,8 +68,22 @@ fun PracticeScreen(navController: NavController? = null) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Keep your UI gradient & styles
-    val gradient = Brush.verticalGradient(listOf(Color(0xFFE3F2FD), Color(0xFFFFF8E1)))
+    // Kindergarten-friendly gradient
+    val gradient = Brush.verticalGradient(colors = listOf(
+        Color(0xFFFFE0B2), // Warm orange
+        Color(0xFFFFF8E1), // Cream
+        Color(0xFFE8F5E8), // Light green
+        Color(0xFFE3F2FD)  // Light blue
+    ))
+    
+    // Gamification elements
+    val soundEffects = rememberSoundEffects()
+    val hapticFeedback = rememberHapticFeedback()
+    var showEncouragingMessage by remember { mutableStateOf(false) }
+    var encouragingText by remember { mutableStateOf("") }
+    var isSuccess by remember { mutableStateOf(false) }
+    var score by remember { mutableStateOf(0) }
+    var streak by remember { mutableStateOf(0) }
 
     // Permissions
     var hasPermission by remember {
@@ -88,7 +103,6 @@ fun PracticeScreen(navController: NavController? = null) {
     var selectedLevel by remember { mutableStateOf("Easy") }
     var isPracticing by remember { mutableStateOf(false) }
     var targetLetter by remember { mutableStateOf(getRandomTarget(selectedLevel)) }
-    var score by remember { mutableStateOf(0) }
     var totalAttempts by remember { mutableStateOf(10) }
     var currentPrediction by remember { mutableStateOf("") }
     var showFeedback by remember { mutableStateOf(false) }
@@ -97,9 +111,18 @@ fun PracticeScreen(navController: NavController? = null) {
 
     // Load model off the UI thread and store interpreter in state
     var modelInterpreter by remember { mutableStateOf<Interpreter?>(null) }
+    var handSignAnalyzer by remember { mutableStateOf<HandSignAnalyzer?>(null) }
+    
     LaunchedEffect(Unit) {
         // Loads model on IO dispatcher
-        modelInterpreter = withContext(Dispatchers.IO) { loadModel(context) }
+        modelInterpreter = withContext(Dispatchers.IO) { loadPracticeModel(context) }
+    }
+    
+    // Cleanup analyzer when composable is disposed
+    DisposableEffect(Unit) {
+        onDispose {
+            handSignAnalyzer?.cleanup()
+        }
     }
 
     // Use 640 if that's your trained imgsz; change to 320 if you want faster inference
@@ -114,31 +137,56 @@ fun PracticeScreen(navController: NavController? = null) {
     val correctToneGenerator = remember { ToneGenerator(AudioManager.STREAM_MUSIC, 100) }
     val incorrectToneGenerator = remember { ToneGenerator(AudioManager.STREAM_MUSIC, 100) }
 
-    // Feedback handler
+    // Feedback handler with gamification
     val feedbackHandler = remember { Handler(Looper.getMainLooper()) }
     val showFeedbackRunnable = remember {
         Runnable {
             showFeedback = false
             if (feedbackCorrect) {
-                score = min(score + 1, totalAttempts)
-                if (score < totalAttempts) {
+                // Play success sound and haptic
+                soundEffects.playCorrect()
+                hapticFeedback.successPattern()
+                
+                // Update score and streak
+                score += 10
+                streak += 1
+                
+                // Show encouraging message
+                encouragingText = EncouragingMessages.getRandomCorrectMessage()
+                showEncouragingMessage = true
+                
+                if (score < totalAttempts * 10) {
                     targetLetter = getRandomTarget(selectedLevel)
                 } else {
                     if (selectedLevel == "Easy") {
                         selectedLevel = "Average"
-                        Toast.makeText(context, "Great job on Easy! Now Average mode.", Toast.LENGTH_SHORT).show()
+                        encouragingText = "🎉 Great job! Moving to Average mode!"
+                        showEncouragingMessage = true
                     } else if (selectedLevel == "Average") {
                         selectedLevel = "Difficult"
-                        Toast.makeText(context, "Excellent on Average! Now Difficult mode.", Toast.LENGTH_SHORT).show()
+                        encouragingText = "🌟 Excellent! Now try Difficult mode!"
+                        showEncouragingMessage = true
                     } else {
                         showBadgeDialog = true
                         isPracticing = false
-                        Toast.makeText(context, "Mastered Difficult! Unlocking badge...", Toast.LENGTH_SHORT).show()
+                        encouragingText = "🏆 Mastered all levels! You're amazing!"
+                        showEncouragingMessage = true
                         return@Runnable
                     }
                     score = 0
                     targetLetter = getRandomTarget(selectedLevel)
                 }
+            } else {
+                // Play wrong sound and haptic
+                soundEffects.playWrong()
+                hapticFeedback.errorPattern()
+                
+                // Reset streak
+                streak = 0
+                
+                // Show encouraging message
+                encouragingText = EncouragingMessages.getRandomWrongMessage()
+                showEncouragingMessage = true
             }
         }
     }
@@ -158,28 +206,33 @@ fun PracticeScreen(navController: NavController? = null) {
             .build()
 
         // Use the analyzer on the background executor
-        imageAnalyzer.setAnalyzer(cameraExecutor, HandSignAnalyzer(
+        val analyzer = HandSignAnalyzer(
             modelInterpreter = modelInterpreter,
             imageProcessor = imageProcessor,
             inputSize = inputSize,
             useFrontCamera = useFrontCamera,
             context = context,
             onPrediction = { prediction: String ->
-                // update UI states based on prediction; only act on non-empty string
+                // update UI states based on prediction; guard while feedback is visible
                 currentPrediction = prediction
-                if (prediction.isNotEmpty() && prediction.uppercase() == targetLetter.uppercase()) {
-                    feedbackCorrect = true
-                    correctToneGenerator.startTone(ToneGenerator.TONE_PROP_ACK, 200)
-                } else if (prediction.isNotEmpty()) {
-                    feedbackCorrect = false
-                    incorrectToneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 200)
-                }
-                if (prediction.isNotEmpty()) {
+                if (!showFeedback && prediction.isNotEmpty()) {
+                    if (prediction.uppercase() == targetLetter.uppercase()) {
+                        feedbackCorrect = true
+                        correctToneGenerator.startTone(ToneGenerator.TONE_PROP_ACK, 200)
+                    } else {
+                        feedbackCorrect = false
+                        incorrectToneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 200)
+                    }
                     showFeedback = true
                     feedbackHandler.postDelayed(showFeedbackRunnable, 1500)
                 }
             }
-        ))
+        )
+        
+        // Store analyzer instance for cleanup
+        handSignAnalyzer = analyzer
+        
+        imageAnalyzer.setAnalyzer(cameraExecutor, analyzer)
 
         try {
             provider.unbindAll()
@@ -193,12 +246,17 @@ fun PracticeScreen(navController: NavController? = null) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Practice Mode") },
+                title = { Text("🤟 Practice Mode", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = { navController?.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
+                )
             )
         }
     ) { inner ->
@@ -208,6 +266,14 @@ fun PracticeScreen(navController: NavController? = null) {
                 .background(gradient)
                 .padding(inner)
         ) {
+            // Encouraging message overlay
+            if (showEncouragingMessage) {
+                FloatingMessage(
+                    message = encouragingText,
+                    isVisible = showEncouragingMessage,
+                    onComplete = { showEncouragingMessage = false }
+                )
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -215,39 +281,182 @@ fun PracticeScreen(navController: NavController? = null) {
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("✋ Practice Mode (Student, AI Recognition)", fontSize = 20.sp, fontWeight = SemiBold, color = Color(0xFF1565C0))
+                // Header with mascot
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    AnimatedMascot(
+                        isHappy = true,
+                        isCelebrating = false,
+                        size = 60
+                    )
+                    Column {
+                        Text("🤟 Practice Mode", fontSize = 24.sp, fontWeight = SemiBold, color = MaterialTheme.colorScheme.primary)
+                        Text("Let's learn the ABCs in sign language! 🌟", fontSize = 16.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f))
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Camera-based AI checks signs in real-time. Feedback shows after you perform a sign.", fontSize = 14.sp, color = Color.Gray)
+                Text("The camera will watch your hands and tell you if you're doing the sign correctly! 📸✨", fontSize = 16.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
                 Spacer(modifier = Modifier.height(16.dp))
-                // Difficulty buttons
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Easy", "Average", "Difficult").forEach { lvl ->
-                        val isSelected = lvl == selectedLevel
-                        Button(
-                            onClick = {
-                                selectedLevel = lvl
-                                score = 0
-                                if (isPracticing) {
-                                    targetLetter = getRandomTarget(lvl)
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isSelected) Color(0xFF1976D2) else Color(0xFF90CAF9)
-                            ),
-                            shape = RoundedCornerShape(10.dp)
-                        ) { Text(lvl, color = Color.White) }
+                
+                // Score and streak display
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF4CAF50).copy(alpha = 0.1f)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("Score", fontSize = 12.sp, color = Color(0xFF666666))
+                            Text("$score", fontSize = 20.sp, fontWeight = Bold, color = Color(0xFF4CAF50))
+                        }
+                    }
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFF9800).copy(alpha = 0.1f)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("Streak", fontSize = 12.sp, color = Color(0xFF666666))
+                            Text("$streak", fontSize = 20.sp, fontWeight = Bold, color = Color(0xFFFF9800))
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                // Target card
-                Card(shape = RoundedCornerShape(12.dp), elevation = CardDefaults.cardElevation(6.dp), modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Show the sign for", fontWeight = Medium)
+                // Enhanced Difficulty buttons
+                Text(
+                    text = "🎯 Choose Your Challenge Level",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    listOf(
+                        Triple("Easy", "🟢", Color(0xFF4CAF50)),
+                        Triple("Average", "🟡", Color(0xFFFF9800)),
+                        Triple("Difficult", "🔴", Color(0xFFF44336))
+                    ).forEach { (lvl, emoji, color) ->
+                        val isSelected = lvl == selectedLevel
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(80.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) color else color.copy(alpha = 0.1f)
+                            ),
+                            elevation = CardDefaults.cardElevation(
+                                defaultElevation = if (isSelected) 8.dp else 4.dp
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            onClick = {
+                                soundEffects.playButtonClick()
+                                hapticFeedback.lightTap()
+                                selectedLevel = lvl
+                                score = 0
+                                streak = 0
+                                if (isPracticing) {
+                                    targetLetter = getRandomTarget(lvl)
+                                }
+                            }
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    text = emoji,
+                                    fontSize = 24.sp
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = lvl,
+                                    color = if (isSelected) Color.White else color,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                // Enhanced Target card
+                Card(
+                    shape = RoundedCornerShape(20.dp), 
+                    elevation = CardDefaults.cardElevation(8.dp), 
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp), 
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "🎯 Your Mission",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(targetLetter, fontSize = 48.sp, fontWeight = ExtraBold, color = Color(0xFF0D47A1))
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text("Score: $score / $totalAttempts", fontSize = 14.sp, color = Color.Gray)
+                        Text(
+                            text = "Show the sign for",
+                            fontWeight = Medium, 
+                            color = Color(0xFF666666),
+                            fontSize = 16.sp
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        // Enhanced letter display
+                        Box(
+                            modifier = Modifier
+                                .size(120.dp)
+                                .background(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)
+                                        )
+                                    ),
+                                    shape = RoundedCornerShape(60.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = targetLetter, 
+                                fontSize = 64.sp, 
+                                fontWeight = ExtraBold, 
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Enhanced star rating
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "Your Progress",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFF666666)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            StarRating(
+                                rating = (score / 10).coerceAtMost(5),
+                                maxRating = 5,
+                                size = 28,
+                                animated = true
+                            )
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
@@ -273,7 +482,7 @@ fun PracticeScreen(navController: NavController? = null) {
                         },
                         modifier = Modifier.matchParentSize()
                     )
-                    // Feedback overlay
+                    // Feedback overlay with encouraging messages
                     if (showFeedback) {
                         Box(
                             modifier = Modifier
@@ -283,6 +492,14 @@ fun PracticeScreen(navController: NavController? = null) {
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                if (feedbackCorrect) {
+                                    AnimatedMascot(
+                                        isHappy = true,
+                                        isCelebrating = true,
+                                        size = 80
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                }
                                 Text(
                                     text = if (feedbackCorrect) "✅ Correct!" else "❌ Try again!",
                                     fontSize = 24.sp,
@@ -300,37 +517,171 @@ fun PracticeScreen(navController: NavController? = null) {
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                // Controls
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { targetLetter = getRandomTarget(selectedLevel) }, modifier = Modifier.weight(1f)) {
-                        Text("Skip")
-                    }
-                    Button(onClick = { useFrontCamera = !useFrontCamera }, modifier = Modifier.weight(1f)) {
-                        Text(if (useFrontCamera) "Back Camera" else "Front Camera")
-                    }
-                    Button(
-                        onClick = {
-                            isPracticing = !isPracticing
-                            if (isPracticing) {
-                                targetLetter = getRandomTarget(selectedLevel)
-                                score = 0
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
+                // Enhanced Controls
+                Text(
+                    text = "🎮 Control Panel",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Main action buttons
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Skip button
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFF9800)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        onClick = { 
+                            soundEffects.playButtonClick()
+                            hapticFeedback.lightTap()
+                            targetLetter = getRandomTarget(selectedLevel) 
+                        }
                     ) {
-                        Text(if (isPracticing) "Stop Practice" else "Start Practice")
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("⏭️", fontSize = 24.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Skip",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                    
+                    // Camera switch button
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF9C27B0)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        onClick = { 
+                            soundEffects.playButtonClick()
+                            hapticFeedback.lightTap()
+                            useFrontCamera = !useFrontCamera 
+                        }
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("📷", fontSize = 24.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = if (useFrontCamera) "Back" else "Front",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Start/Stop practice button
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isPracticing) Color(0xFFF44336) else Color(0xFF4CAF50)
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    onClick = {
+                        soundEffects.playButtonClick()
+                        hapticFeedback.lightTap()
+                        isPracticing = !isPracticing
+                        if (isPracticing) {
+                            targetLetter = getRandomTarget(selectedLevel)
+                            score = 0
+                            streak = 0
+                        }
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isPracticing) "⏹️" else "▶️",
+                            fontSize = 28.sp
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = if (isPracticing) "Stop Practice" else "Start Practice",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    OutlinedButton(onClick = {
-                        score = 0
-                        targetLetter = getRandomTarget(selectedLevel)
-                        currentPrediction = ""
-                        showFeedback = false
-                        feedbackHandler.removeCallbacks(showFeedbackRunnable)
-                    }) { Text("Reset") }
-                    Text("Tip: keep hand centered in the camera view", color = Color.Gray, modifier = Modifier.align(Alignment.CenterVertically))
+                
+                // Enhanced Reset and Tips section
+                Row(
+                    modifier = Modifier.fillMaxWidth(), 
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Reset button
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF607D8B)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        onClick = {
+                            soundEffects.playButtonClick()
+                            hapticFeedback.lightTap()
+                            score = 0
+                            streak = 0
+                            targetLetter = getRandomTarget(selectedLevel)
+                            currentPrediction = ""
+                            showFeedback = false
+                            feedbackHandler.removeCallbacks(showFeedbackRunnable)
+                        }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("🔄", fontSize = 16.sp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Reset",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    
+                    // Tips card
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("💡", fontSize = 16.sp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Keep hand centered in camera view",
+                                color = Color(0xFF1976D2),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.height(40.dp))
             }
@@ -390,7 +741,7 @@ fun getRandomTarget(level: String): String {
 }
 
 // Load TFLite model from assets (CPU-only)
-private fun loadModel(context: Context): Interpreter? {
+private fun loadPracticeModel(context: Context): Interpreter? {
     return try {
         val model = loadModelFile(context, "asl_model.tflite")
         Interpreter(model).also {
@@ -465,7 +816,7 @@ class HandSignAnalyzer(
     private val numFeatures = 4 + numClasses // 31
     private val numDetections = 8400
     private val confThreshold = 0.3f // raw detection threshold
-    private val feedbackThreshold = 0.75f // FINAL confidence threshold (user requested 75%)
+    private val feedbackThreshold = 0.60f // FINAL confidence threshold (user requested 75%)
     private val iouThreshold = 0.5f
 
     // Reusable buffers to reduce allocations and GC pressure
@@ -475,6 +826,9 @@ class HandSignAnalyzer(
     private val outputArray3D = Array(1) { Array(numFeatures) { FloatArray(numDetections) } }
     private val pixels = IntArray(inputSize * inputSize)
     private val inputArray = FloatArray(inputSize * inputSize * 3)
+    
+    // Thread safety for interpreter access
+    private val interpreterLock = Any()
 
     override fun analyze(image: ImageProxy) {
         val currentTime = System.currentTimeMillis()
@@ -499,12 +853,32 @@ class HandSignAnalyzer(
                 bitmap = flipHorizontally(bitmap)
             }
 
+            // Validate bitmap
+            if (bitmap.isRecycled || bitmap.width <= 0 || bitmap.height <= 0) {
+                Log.e(TAG, "Invalid bitmap: recycled=${bitmap.isRecycled}, size=${bitmap.width}x${bitmap.height}")
+                handler.post { onPrediction("") }
+                return
+            }
+
             // Prepare TensorImage and process
             val tensorImage = TensorImage.fromBitmap(bitmap)
             val processedImage = imageProcessor.process(tensorImage)
+            
+            // Clean up original bitmap to free memory
+            if (bitmap != processedImage.bitmap) {
+                bitmap.recycle()
+            }
 
             // Prepare float input buffer (NHWC float [0,1] normalized)
             inputBuffer.rewind()
+            
+            // Validate bitmap size
+            if (processedImage.bitmap.width != inputSize || processedImage.bitmap.height != inputSize) {
+                Log.e(TAG, "Bitmap size mismatch: expected ${inputSize}x${inputSize}, got ${processedImage.bitmap.width}x${processedImage.bitmap.height}")
+                handler.post { onPrediction("") }
+                return
+            }
+            
             processedImage.bitmap.getPixels(pixels, 0, inputSize, 0, 0, inputSize, inputSize)
             var floatIndex = 0
             for (pixel in pixels) {
@@ -515,10 +889,27 @@ class HandSignAnalyzer(
                 inputArray[floatIndex++] = g
                 inputArray[floatIndex++] = b
             }
+            
+            // Validate input array size
+            if (floatIndex != inputArray.size) {
+                Log.e(TAG, "Input array size mismatch: expected ${inputArray.size}, got $floatIndex")
+                handler.post { onPrediction("") }
+                return
+            }
+            
             inputBuffer.asFloatBuffer().put(inputArray)
 
             // Run inference (output shape expected [1, numFeatures, numDetections])
-            modelInterpreter.run(inputBuffer, outputArray3D)
+            // Use synchronized block to prevent concurrent access
+            synchronized(interpreterLock) {
+                try {
+                    modelInterpreter.run(inputBuffer, outputArray3D)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error during model inference", e)
+                    handler.post { onPrediction("") }
+                    return
+                }
+            }
 
             // Flatten output for processing
             val outputFlat = FloatArray(numFeatures * numDetections)
@@ -576,6 +967,11 @@ class HandSignAnalyzer(
             Log.d(TAG, "Final prediction: $predictedLetter (conf: ${bestBox?.cnf ?: 0f})")
             handler.post { onPrediction(predictedLetter) }
 
+        } catch (e: OutOfMemoryError) {
+            Log.e(TAG, "Out of memory during analysis", e)
+            // Force garbage collection
+            System.gc()
+            handler.post { onPrediction("") }
         } catch (e: Exception) {
             Log.e(TAG, "Error in analyze", e)
             handler.post { onPrediction("") }
@@ -616,6 +1012,27 @@ class HandSignAnalyzer(
         val interArea = maxOf(0f, x2 - x1) * maxOf(0f, y2 - y1)
         val unionArea = (box1.x2 - box1.x1) * (box1.y2 - box1.y1) + (box2.x2 - box2.x1) * (box2.y2 - box2.y1) - interArea
         return if (unionArea > 0) interArea / unionArea else 0f
+    }
+    
+    /**
+     * Clean up resources to prevent memory leaks
+     */
+    fun cleanup() {
+        try {
+            // Clear buffers to free memory
+            inputBuffer.clear()
+            inputArray.fill(0f)
+            pixels.fill(0)
+            
+            // Clear output array
+            for (batch in outputArray3D) {
+                for (feat in batch) {
+                    feat.fill(0f)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during cleanup", e)
+        }
     }
 }
 

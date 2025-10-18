@@ -7,13 +7,18 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Help
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,12 +32,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.signbuddy.R
+import com.example.signbuddy.ui.components.*
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TutorialScreen(navController: NavController? = null) {
     val context = LocalContext.current
+    
+    // Gamification elements
+    val soundEffects = rememberSoundEffects()
+    val hapticFeedback = rememberHapticFeedback()
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
     var narrationEnabled by remember { mutableStateOf(true) }
 
@@ -93,18 +103,16 @@ fun TutorialScreen(navController: NavController? = null) {
     // 🔹 Speak current letter
     LaunchedEffect(index, narrationEnabled) {
         if (narrationEnabled) {
-            val letter = letters[index]
-            tts?.speak("Letter $letter", TextToSpeech.QUEUE_FLUSH, null, null)
+            tts?.speak(letters[index], TextToSpeech.QUEUE_FLUSH, null, null)
         }
     }
 
-    // 🔹 Animation for image
+    // 🔹 Animation for image scaling
     val scale = remember { Animatable(1f) }
     LaunchedEffect(index) {
-        scale.snapTo(1f)
         scale.animateTo(
-            targetValue = 1.1f,
-            animationSpec = tween(300, easing = LinearEasing)
+            targetValue = 1.05f,
+            animationSpec = tween(200, easing = LinearEasing)
         )
         scale.animateTo(
             targetValue = 1f,
@@ -114,18 +122,45 @@ fun TutorialScreen(navController: NavController? = null) {
 
     // 🔹 Background
     val gradientBackground = Brush.verticalGradient(
-        colors = listOf(Color(0xFFFFF7AE), Color(0xFFFFE5C2), Color(0xFFE1F5FE))
+        colors = listOf(
+            Color(0xFFFFE0B2), // Warm orange
+            Color(0xFFFFF8E1), // Cream
+            Color(0xFFE8F5E8), // Light green
+            Color(0xFFE3F2FD)  // Light blue
+        )
     )
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Tutorial: A–Z Signs") },
+                title = { Text("📚 Tutorial: A–Z Signs", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = { navController?.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                actions = {
+                    // Help/Info Button
+                    IconButton(
+                        onClick = {
+                            soundEffects.playButtonClick()
+                            hapticFeedback.lightTap()
+                            // Show help dialog or navigate to help screen
+                        }
+                    ) {
+                        Icon(
+                            Icons.Default.Help,
+                            contentDescription = "Help",
+                            tint = Color.White
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White
+                )
             )
         }
     ) { innerPadding ->
@@ -134,98 +169,232 @@ fun TutorialScreen(navController: NavController? = null) {
                 .fillMaxSize()
                 .background(gradientBackground)
                 .padding(innerPadding)
-                .padding(20.dp),
+                .padding(20.dp)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 🔹 Title
-            Text(
-                text = "Learn the Alphabet in Sign Language",
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 22.sp
-                ),
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // 🔹 Full Image with Rounded Corners + Animation
-            val currentLetter = letters[index]
-            val imageRes = letterImages[currentLetter]
-
-            if (imageRes != null) {
-                Image(
-                    painter = painterResource(id = imageRes),
-                    contentDescription = "Sign for $currentLetter",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height((350 * scale.value).dp) // Animate size
-                        .clip(RoundedCornerShape(24.dp)),
-                    contentScale = ContentScale.Fit // show full image inside
+            // 🔹 Enhanced Header with Mascot
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                AnimatedMascot(
+                    isHappy = true,
+                    isCelebrating = false,
+                    size = 60
                 )
+                Column {
+                    Text(
+                        text = "📚 Learn the Alphabet! 📚",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Let's discover all the letters in sign language! 🌟",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // 🔹 Progress Bar
-            LinearProgressIndicator(
-                progress = progress,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(12.dp),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = Color.LightGray
-            )
-            Text(
-                text = "${index + 1} / $total",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            // 🔹 Enhanced Image Display with Card
+            val currentLetter = letters[index]
+            val imageRes = letterImages[currentLetter]
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Letter $currentLetter",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    if (imageRes != null) {
+                        Image(
+                            painter = painterResource(id = imageRes),
+                            contentDescription = "Sign for $currentLetter",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height((300 * scale.value).dp) // Animate size
+                                .clip(RoundedCornerShape(16.dp)),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Try making this sign with your hands! 🤟",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // 🔹 Controls
+            // 🔹 Progress Indicator
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Letter ${index + 1} of $total",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFF2E7D32),
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = (index + 1).toFloat() / total.toFloat(),
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFF4CAF50),
+                        trackColor = Color(0xFFC8E6C9)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 🔹 Enhanced Controls
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
-                    onClick = { if (index > 0) index-- },
-                    enabled = index > 0
+                    onClick = { 
+                        soundEffects.playButtonClick()
+                        hapticFeedback.lightTap()
+                        if (index > 0) index-- 
+                    },
+                    enabled = index > 0,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF4ECDC4)
+                    )
                 ) {
-                    Text("Previous")
+                    Text("⬅️ Previous", fontWeight = FontWeight.Bold)
                 }
 
-                IconToggleButton(
-                    checked = narrationEnabled,
-                    onCheckedChange = { narrationEnabled = it }
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (narrationEnabled) Color(0xFF4CAF50) else Color(0xFFE0E0E0)
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    Icon(
-                        imageVector = if (narrationEnabled) Icons.Default.Mic else Icons.Default.MicOff,
-                        contentDescription = "Narration Toggle",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    IconToggleButton(
+                        checked = narrationEnabled,
+                        onCheckedChange = { 
+                            soundEffects.playButtonClick()
+                            hapticFeedback.lightTap()
+                            narrationEnabled = it 
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (narrationEnabled) Icons.Default.Mic else Icons.Default.MicOff,
+                            contentDescription = "Narration Toggle",
+                            tint = if (narrationEnabled) Color.White else Color.Gray
+                        )
+                    }
                 }
 
                 Button(
                     onClick = {
+                        soundEffects.playButtonClick()
+                        hapticFeedback.lightTap()
                         if (index < total - 1) {
                             index++
                         } else {
                             unlockedBeginnerBadge = true
                         }
-                    }
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFFF6B6B)
+                    )
                 ) {
-                    Text(if (index < total - 1) "Next" else "Finish")
+                    Text(
+                        text = if (index < total - 1) "Next ➡️" else "Finish 🎉",
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
 
-            // 🔹 Badge Unlock
-            // 🔹 Badge Unlock Popup
-            // 🔹 Badge Unlock Popup
-            // 🔹 Badge Unlock Popup
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 🔹 Additional Action Buttons
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Skip Tutorial Button
+                Button(
+                    onClick = {
+                        soundEffects.playButtonClick()
+                        hapticFeedback.lightTap()
+                        navController?.navigate("studentDashboard/Student") {
+                            popUpTo("tutorial") { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFFF9800)
+                    ),
+                    modifier = Modifier.fillMaxWidth(0.6f)
+                ) {
+                    Text(
+                        text = "⏭️ Skip Tutorial",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // Second row - Restart Tutorial Button
+                Button(
+                    onClick = {
+                        soundEffects.playButtonClick()
+                        hapticFeedback.lightTap()
+                        index = 0 // Reset to first letter
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF9C27B0)
+                    ),
+                    modifier = Modifier.fillMaxWidth(0.6f)
+                ) {
+                    Text(
+                        text = "🔄 Restart Tutorial",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // 🔹 Badge Unlock Dialog
             if (unlockedBeginnerBadge) {
                 AlertDialog(
                     onDismissRequest = { unlockedBeginnerBadge = false },
@@ -233,13 +402,8 @@ fun TutorialScreen(navController: NavController? = null) {
                         TextButton(
                             onClick = {
                                 unlockedBeginnerBadge = false
-                                // ✅ Go back into StudentDashboard with the username
-                                navController?.navigate("studentDashboard/Student") { // replace "Student" with actual username if stored
-                                    popUpTo("studentDashboard/{username}") { inclusive = true }
-                                    launchSingleTop = true
-                                }
-                                // ✅ Navigate to Lessons tab
-                                navController?.navigate("lessons") {
+                                navController?.navigate("studentDashboard/Student") {
+                                    popUpTo("tutorial") { inclusive = true }
                                     launchSingleTop = true
                                 }
                             }

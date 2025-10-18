@@ -2,6 +2,7 @@
     package="com.example.signbuddy">
     <uses-feature android:name="android.hardware.camera.any"/>
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Add this: explicitly state that the camera is optional -->
     <uses-feature android:name="android.hardware.camera" android:required="true" />

@@ -8,12 +8,13 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -21,6 +22,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,7 +35,12 @@ fun SignBuddyUsernameScreen(navController: NavController, modifier: Modifier = M
     var selectedRole by remember { mutableStateOf("Student") }
 
     val gradientBackground = Brush.verticalGradient(
-        colors = listOf(Color(0xFFFFF7AE), Color(0xFFFFE5C2), Color(0xFFE1F5FE))
+        colors = listOf(
+            Color(0xFFFFE0B2), // Warm orange
+            Color(0xFFFFF8E1), // Cream
+            Color(0xFFE8F5E8), // Light green
+            Color(0xFFE3F2FD)  // Light blue
+        )
     )
 
     Surface(
@@ -49,30 +56,45 @@ fun SignBuddyUsernameScreen(navController: NavController, modifier: Modifier = M
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(
-                imageVector = Icons.Filled.Person,
-                contentDescription = "Logo",
-                modifier = Modifier.size(96.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
+            // Fun animated logo area
+            Box(
+                modifier = Modifier
+                    .size(120.dp)
+                    .background(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)
+                            )
+                        ),
+                        shape = RoundedCornerShape(60.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Person,
+                    contentDescription = "SignBuddy Logo",
+                    modifier = Modifier.size(80.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Welcome to SignBuddy 👋",
-                style = MaterialTheme.typography.headlineSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 22.sp
-                ),
-                color = MaterialTheme.colorScheme.primary
+                text = "Welcome to SignBuddy! 🎉",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Learn sign language in a fun way!",
+                text = "Let's learn the ABCs in sign language together! 🤟",
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f)
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+                textAlign = TextAlign.Center
             )
 
             Spacer(modifier = Modifier.height(22.dp))
@@ -80,19 +102,28 @@ fun SignBuddyUsernameScreen(navController: NavController, modifier: Modifier = M
             OutlinedTextField(
                 value = username,
                 onValueChange = { if (it.length <= 20) username = it },
-                label = { Text("Username") },
+                label = { Text("What's your name? 👶") },
+                placeholder = { Text("Enter your name here...") },
                 leadingIcon = { Icon(imageVector = Icons.Filled.Person, contentDescription = null) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(18.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    focusedLabelColor = MaterialTheme.colorScheme.primary,
+                    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             )
 
             Spacer(modifier = Modifier.height(20.dp))
 
             Text(
-                text = "Select role",
+                text = "Are you a student or teacher? 👨‍🎓👩‍🏫",
                 modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -103,32 +134,21 @@ fun SignBuddyUsernameScreen(navController: NavController, modifier: Modifier = M
             ) {
                 // Student Role
                 RoleCard(
-                    title = "Student",
+                    title = "Student 👶",
                     icon = Icons.Filled.Person,
                     isSelected = selectedRole == "Student",
-                    selectedColor = Color(0xFFBBDEFB)
+                    selectedColor = Color(0xFF4ECDC4) // Teal
                 ) { selectedRole = "Student" }
 
                 // Teacher Role
                 RoleCard(
-                    title = "Teacher",
+                    title = "Teacher 👩‍🏫",
                     icon = Icons.Filled.School,
                     isSelected = selectedRole == "Teacher",
-                    selectedColor = Color(0xFFC8E6C9)
+                    selectedColor = Color(0xFFFF6B6B) // Coral
                 ) {
                     selectedRole = "Teacher"
                     navController.navigate("teacherLogin")
-                }
-
-                // Admin Role
-                RoleCard(
-                    title = "Admin",
-                    icon = Icons.Filled.AdminPanelSettings,
-                    isSelected = selectedRole == "Admin",
-                    selectedColor = Color(0xFFFFCDD2)
-                ) {
-                    selectedRole = "Admin"
-                    navController.navigate("adminLogin")
                 }
             }
 
@@ -168,7 +188,6 @@ fun ContinueButton(
                     }
                 }
                 "Teacher" -> navController.navigate("teacherLogin")
-                "Admin" -> navController.navigate("adminLogin")
             }
         },
         enabled = username.isNotBlank(),
@@ -190,19 +209,22 @@ fun ContinueButton(
                 .background(
                     if (username.isNotBlank()) {
                         Brush.horizontalGradient(
-                            listOf(Color(0xFF42A5F5), Color(0xFF1976D2))
+                            listOf(
+                                MaterialTheme.colorScheme.primary,
+                                MaterialTheme.colorScheme.secondary
+                            )
                         )
                     } else {
                         Brush.horizontalGradient(listOf(Color.Gray, Color.DarkGray))
                     },
-                    shape = RoundedCornerShape(14.dp)
+                    shape = RoundedCornerShape(18.dp)
                 ),
             contentAlignment = Alignment.Center
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Continue",
-                    style = MaterialTheme.typography.bodyLarge.copy(
+                    text = "Let's Start Learning! 🚀",
+                    style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
@@ -211,7 +233,8 @@ fun ContinueButton(
                 Icon(
                     imageVector = Icons.Default.ArrowForward,
                     contentDescription = "Continue",
-                    tint = Color.White
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
@@ -228,32 +251,36 @@ fun RoleCard(
 ) {
     Card(
         modifier = Modifier
-            .size(104.dp)
+            .size(120.dp)
             .clickable { onClick() }
             .padding(4.dp),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) selectedColor else Color.White
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 6.dp else 2.dp)
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (isSelected) 8.dp else 4.dp
+        )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(10.dp),
+                .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = title,
-                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                modifier = Modifier.size(32.dp),
+                tint = if (isSelected) Color.White else MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                style = MaterialTheme.typography.labelLarge,
+                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center
             )
         }
     }

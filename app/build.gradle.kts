@@ -49,6 +49,8 @@
         // Compose Navigation & icons
         implementation("androidx.navigation:navigation-compose:2.8.3")
         implementation("androidx.compose.material:material-icons-extended")
+        // Accompanist Navigation Animation for screen transitions
+        implementation("com.google.accompanist:accompanist-navigation-animation:0.36.0")
 
         // CameraX
         implementation("androidx.camera:camera-camera2:1.5.0")

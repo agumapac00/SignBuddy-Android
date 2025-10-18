@@ -11,11 +11,12 @@ import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
+import com.google.accompanist.navigation.animation.AnimatedNavHost
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.example.signbuddy.ui.screens.AdminLoginScreen
 import com.example.signbuddy.ui.screens.SignBuddyUsernameScreen
 import com.example.signbuddy.ui.dashboard.StudentDashboard
 import com.example.signbuddy.ui.screens.AchievementsScreen
@@ -24,12 +25,21 @@ import com.example.signbuddy.ui.screens.LeaderboardScreen
 import com.example.signbuddy.ui.screens.MultiplayerScreen
 import com.example.signbuddy.ui.screens.PracticeScreen
 import com.example.signbuddy.ui.screens.TeacherLoginScreen
+import com.example.signbuddy.ui.screens.teacher.TeacherDashboardScreen
+import com.example.signbuddy.ui.screens.teacher.TeacherCreateQuizScreen
+import com.example.signbuddy.ui.screens.teacher.TeacherAssignQuizScreen
+import com.example.signbuddy.ui.screens.teacher.TeacherClassPerformanceScreen
+import com.example.signbuddy.ui.screens.teacher.TeacherLeaderboardsScreen
+import com.example.signbuddy.ui.screens.teacher.TeacherReportsScreen
+import com.example.signbuddy.ui.screens.teacher.TeacherStudentsScreen
+import com.example.signbuddy.ui.screens.teacher.TeacherAddStudentScreen
 import com.example.signbuddy.ui.screens.TutorialScreen
 import com.example.signbuddy.ui.screens.tabs.LessonsScreen
 import com.example.signbuddy.ui.screens.tabs.ProgressScreen
 import com.example.signbuddy.ui.theme.SignBuddyTheme
 
 class MainActivity : ComponentActivity() {
+    @OptIn(ExperimentalAnimationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -48,9 +58,21 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val navController = rememberNavController()
 
-                    NavHost(
+                    AnimatedNavHost(
                         navController = navController,
-                        startDestination = "login"
+                        startDestination = "login",
+                        enterTransition = {
+                            fadeIn(animationSpec = tween(220)) + scaleIn(initialScale = 0.98f, animationSpec = tween(220))
+                        },
+                        exitTransition = {
+                            fadeOut(animationSpec = tween(180))
+                        },
+                        popEnterTransition = {
+                            fadeIn(animationSpec = tween(220))
+                        },
+                        popExitTransition = {
+                            fadeOut(animationSpec = tween(180)) + scaleOut(targetScale = 0.98f, animationSpec = tween(180))
+                        }
                     ) {
                         // Username + Role selection
                         composable("login") {
@@ -62,10 +84,32 @@ class MainActivity : ComponentActivity() {
                             TeacherLoginScreen(navController = navController)
                         }
 
-                        // Admin login
-                        composable("adminLogin") {
-                            AdminLoginScreen(navController = navController)
+                        // Teacher dashboard and tools
+                        composable("teacher/dashboard") {
+                            TeacherDashboardScreen(navController = navController)
                         }
+                        composable("teacher/quizzes/create") {
+                            TeacherCreateQuizScreen(navController = navController)
+                        }
+                        composable("teacher/quizzes/assign") {
+                            TeacherAssignQuizScreen(navController = navController)
+                        }
+                        composable("teacher/class/performance") {
+                            TeacherClassPerformanceScreen(navController = navController)
+                        }
+                        composable("teacher/class/leaderboard") {
+                            TeacherLeaderboardsScreen(navController = navController)
+                        }
+                        composable("teacher/reports") {
+                            TeacherReportsScreen(navController = navController)
+                        }
+                        composable("teacher/students") {
+                            TeacherStudentsScreen(navController = navController)
+                        }
+                        composable("teacher/students/add") {
+                            TeacherAddStudentScreen(navController = navController)
+                        }
+
 
                         // Student dashboard (with username argument)
                         composable(
