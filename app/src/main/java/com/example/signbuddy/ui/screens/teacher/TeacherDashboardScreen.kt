@@ -22,10 +22,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.text.font.FontWeight
 import com.example.signbuddy.ui.components.*
+import com.example.signbuddy.viewmodels.AuthViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TeacherDashboardScreen(navController: NavController? = null) {
+fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: AuthViewModel? = null) {
     val gradient = Brush.verticalGradient(
         colors = listOf(
             Color(0xFFFFE0B2), // Warm orange
@@ -49,6 +51,22 @@ fun TeacherDashboardScreen(navController: NavController? = null) {
     val hapticFeedback = rememberHapticFeedback()
     var showConfetti by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
+    
+    // Teacher info state
+    var teacherName by remember { mutableStateOf("Teacher") }
+    var teacherUsername by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    
+    // Fetch teacher info when screen loads
+    LaunchedEffect(Unit) {
+        if (authViewModel != null) {
+            val teacherInfo = authViewModel.getCurrentTeacherInfo()
+            teacherInfo?.let { info ->
+                teacherName = info["displayName"] as? String ?: "Teacher"
+                teacherUsername = info["username"] as? String ?: ""
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -115,7 +133,7 @@ fun TeacherDashboardScreen(navController: NavController? = null) {
                     )
                     Column {
                         Text(
-                            text = "Welcome, Teacher! 👩‍🏫",
+                            text = "Welcome, $teacherName! 👩‍🏫",
                             style = MaterialTheme.typography.headlineMedium,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold
@@ -125,6 +143,13 @@ fun TeacherDashboardScreen(navController: NavController? = null) {
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
                         )
+                        if (teacherUsername.isNotEmpty()) {
+                            Text(
+                                text = "@$teacherUsername",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                            )
+                        }
                     }
                 }
 
@@ -494,19 +519,6 @@ fun TeacherDashboardScreen(navController: NavController? = null) {
                             tint = Color(0xFF6C63FF),
                             modifier = Modifier.size(32.dp)
                         )
-                        Column {
-                            Text(
-                                text = "🎯 Teacher Dashboard",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Manage your students, track progress, and view insights all in one place!",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                            )
-                        }
                     }
                 }
             }

@@ -2,6 +2,7 @@
         alias(libs.plugins.android.application)
         alias(libs.plugins.kotlin.android)
         alias(libs.plugins.kotlin.compose) // ✅ required for Kotlin 2.0+
+        id("com.google.gms.google-services")
     }
 
     android {
@@ -65,6 +66,12 @@
 
         implementation("com.google.mediapipe:tasks-vision:0.10.14")
         implementation(libs.androidx.compose.foundation)
+
+        // Firebase
+        implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+        implementation("com.google.firebase:firebase-auth-ktx")
+        implementation("com.google.firebase:firebase-firestore-ktx")
+        implementation("com.google.firebase:firebase-analytics-ktx")
 
         // Debug
         debugImplementation(libs.androidx.compose.ui.tooling)

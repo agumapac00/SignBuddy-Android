@@ -58,7 +58,7 @@ fun StudentDashboard(
                             modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
                         )
                     },
-                    label = { Text("🏠 Home") },
+                    label = { Text("Home") },
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 }
                 )
@@ -77,7 +77,7 @@ fun StudentDashboard(
                             modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
                         )
                     },
-                    label = { Text("📚 Lessons") },
+                    label = { Text("Lessons") },
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 }
                 )
@@ -96,7 +96,7 @@ fun StudentDashboard(
                             modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
                         )
                     },
-                    label = { Text("👤 Profile") },
+                    label = { Text("Profile") },
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 }
                 )

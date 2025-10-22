@@ -14,11 +14,17 @@ import androidx.navigation.NavType
 import com.google.accompanist.navigation.animation.AnimatedNavHost
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.remember
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.signbuddy.ui.screens.SignBuddyUsernameScreen
+import com.example.signbuddy.ui.screens.StudentRegisterScreen
+import com.example.signbuddy.ui.screens.TeacherLoginScreen
+import com.example.signbuddy.ui.screens.TeacherRegisterScreen
+import com.example.signbuddy.ui.screens.teacher.TeacherDashboardScreen
 import com.example.signbuddy.ui.dashboard.StudentDashboard
+import com.example.signbuddy.viewmodels.AuthViewModel
 import com.example.signbuddy.ui.screens.AchievementsScreen
 import com.example.signbuddy.ui.screens.EvaluationTestScreen
 import com.example.signbuddy.ui.screens.LeaderboardScreen
@@ -57,6 +63,7 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
+                    val authViewModel = remember { AuthViewModel() }
 
                     AnimatedNavHost(
                         navController = navController,
@@ -74,19 +81,29 @@ class MainActivity : ComponentActivity() {
                             fadeOut(animationSpec = tween(180)) + scaleOut(targetScale = 0.98f, animationSpec = tween(180))
                         }
                     ) {
-                        // Username + Role selection
+                        // Student login/role selection
                         composable("login") {
                             SignBuddyUsernameScreen(navController = navController)
                         }
 
+                        // Student registration
+                        composable("studentRegister") {
+                            StudentRegisterScreen(navController = navController)
+                        }
+
                         // Teacher login
                         composable("teacherLogin") {
-                            TeacherLoginScreen(navController = navController)
+                            TeacherLoginScreen(navController = navController, authViewModel = authViewModel)
+                        }
+
+                        // Teacher registration
+                        composable("teacherRegister") {
+                            TeacherRegisterScreen(navController = navController, authViewModel = authViewModel)
                         }
 
                         // Teacher dashboard and tools
                         composable("teacher/dashboard") {
-                            TeacherDashboardScreen(navController = navController)
+                            TeacherDashboardScreen(navController = navController, authViewModel = authViewModel)
                         }
                         composable("teacher/quizzes/create") {
                             TeacherCreateQuizScreen(navController = navController)

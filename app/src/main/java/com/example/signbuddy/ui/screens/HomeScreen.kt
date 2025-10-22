@@ -53,7 +53,7 @@ fun HomeScreen(navController: NavHostController, username: String) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "🌟 Welcome Back! 🌟",
+                    text = "🌟 Welcome Back!",
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold

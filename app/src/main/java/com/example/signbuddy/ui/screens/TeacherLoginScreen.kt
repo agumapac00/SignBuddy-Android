@@ -19,6 +19,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -29,17 +32,52 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.example.signbuddy.viewmodels.AuthViewModel
 
 @Composable
-fun TeacherLoginScreen(navController: NavController) {
+fun TeacherLoginScreen(
+    navController: NavController,
+    authViewModel: AuthViewModel? = null
+) {
     var teacherUsername by remember { mutableStateOf("") }
     var teacherPassword by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+
+    // Observe ViewModel state
+    val isLoading by authViewModel?.isLoading?.collectAsState() ?: remember { mutableStateOf(false) }
+    val authError by authViewModel?.errorMessage?.collectAsState() ?: remember { mutableStateOf(null) }
+    val isLoginSuccessful by authViewModel?.isLoginSuccessful?.collectAsState() ?: remember { mutableStateOf(false) }
+
+    // Update error message when ViewModel error changes
+    LaunchedEffect(authError) {
+        if (authError != null) {
+            showError = true
+            errorMessage = authError!!
+        }
+    }
+
+    // Clear any existing user state when screen loads
+    LaunchedEffect(Unit) {
+        authViewModel?.clearUserState()
+    }
+
+    // Handle successful login
+    LaunchedEffect(isLoginSuccessful) {
+        if (isLoginSuccessful) {
+            // Navigate to teacher dashboard after successful login
+            navController.navigate("teacher/dashboard") {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+    }
 
     val gradientBackground = Brush.verticalGradient(
         colors = listOf(
@@ -63,30 +101,45 @@ fun TeacherLoginScreen(navController: NavController) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Fun animated teacher logo area
+            // Enhanced animated teacher logo area
             Box(
                 modifier = Modifier
                     .size(120.dp)
                     .background(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f),
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                Color(0xFFFF6B6B).copy(alpha = 0.3f),
+                                Color(0xFFFF8E53).copy(alpha = 0.2f)
                             )
                         ),
                         shape = RoundedCornerShape(60.dp)
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Person,
-                    contentDescription = "Teacher Icon",
-                    modifier = Modifier.size(80.dp),
-                    tint = MaterialTheme.colorScheme.secondary
-                )
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.8f),
+                                    Color.White.copy(alpha = 0.4f)
+                                )
+                            ),
+                            shape = RoundedCornerShape(40.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Person,
+                        contentDescription = "Teacher Icon",
+                        modifier = Modifier.size(50.dp),
+                        tint = Color(0xFFD32F2F)
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             Text(
                 text = "Teacher Login 👩‍🏫",
@@ -95,7 +148,7 @@ fun TeacherLoginScreen(navController: NavController) {
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             Text(
                 text = "Welcome back! Let's help our little ones learn ASL! 🌟",
@@ -104,7 +157,7 @@ fun TeacherLoginScreen(navController: NavController) {
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedTextField(
                 value = teacherUsername,
@@ -124,15 +177,25 @@ fun TeacherLoginScreen(navController: NavController) {
                 )
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             OutlinedTextField(
                 value = teacherPassword,
                 onValueChange = { teacherPassword = it },
                 label = { Text("Password 🔐") },
                 placeholder = { Text("Enter your password...") },
+                leadingIcon = { Icon(imageVector = Icons.Filled.Lock, contentDescription = null) },
+                trailingIcon = {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                            contentDescription = if (passwordVisible) "Hide password" else "Show password"
+                        )
+                    }
+                },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 shape = RoundedCornerShape(18.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -184,12 +247,17 @@ fun TeacherLoginScreen(navController: NavController) {
                             showError = true
                             errorMessage = "Please enter both username and password"
                         } else {
-                            // Simple validation - in real app, this would check against a database
-                            if (teacherUsername == "teacher" && teacherPassword == "password") {
-                                navController.navigate("teacher/dashboard")
+                            if (authViewModel != null) {
+                                // Use Firebase authentication
+                                authViewModel.signIn(teacherUsername, teacherPassword)
                             } else {
-                                showError = true
-                                errorMessage = "Invalid username or password"
+                                // Fallback to simple validation for demo
+                                if (teacherUsername == "teacher" && teacherPassword == "password") {
+                                    navController.navigate("teacher/dashboard")
+                                } else {
+                                    showError = true
+                                    errorMessage = "Invalid username or password"
+                                }
                             }
                         }
                     },
@@ -200,7 +268,8 @@ fun TeacherLoginScreen(navController: NavController) {
                     shape = RoundedCornerShape(18.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
                     contentPadding = PaddingValues(),
-                    interactionSource = isrc
+                    interactionSource = isrc,
+                    enabled = !isLoading
                 ) {
                     Box(
                         modifier = Modifier
@@ -216,66 +285,115 @@ fun TeacherLoginScreen(navController: NavController) {
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "Let's Teach! 🚀",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = Color.White
-                        )
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        } else {
+                            Text(
+                                text = "Let's Teach! 🚀",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color.White
+                            )
+                        }
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Demo credentials hint
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8)),
-                shape = RoundedCornerShape(12.dp)
+            // Register Button
+            val registerInteractionSource = remember { MutableInteractionSource() }
+            val registerPressed by registerInteractionSource.collectIsPressedAsState()
+            val registerScale by animateFloatAsState(
+                targetValue = if (registerPressed) 0.96f else 1f,
+                animationSpec = tween(100),
+                label = "registerScale"
+            )
+            Button(
+                onClick = { navController.navigate("teacherRegister") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .graphicsLayer(scaleX = registerScale, scaleY = registerScale),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                contentPadding = PaddingValues(),
+                interactionSource = registerInteractionSource
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.tertiary,
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                                )
+                            ),
+                            shape = RoundedCornerShape(18.dp)
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "📝 Demo Credentials:",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = Color(0xFF2E7D32)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "👤 Username: teacher",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF2E7D32)
-                    )
-                    Text(
-                        text = "🔑 Password: password",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF2E7D32)
+                        text = "Create New Account 📝",
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = Color.White
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            val backInteractionSource = remember { MutableInteractionSource() }
-            val backPressed by backInteractionSource.collectIsPressedAsState()
-            val backScale by animateFloatAsState(
-                targetValue = if (backPressed) 0.95f else 1f,
+            // Student Login Button
+            val studentInteractionSource = remember { MutableInteractionSource() }
+            val studentPressed by studentInteractionSource.collectIsPressedAsState()
+            val studentScale by animateFloatAsState(
+                targetValue = if (studentPressed) 0.95f else 1f,
                 animationSpec = tween(100),
-                label = "backButton"
+                label = "studentButton"
             )
-            TextButton(
-                onClick = { navController.popBackStack() },
-                interactionSource = backInteractionSource,
-                modifier = Modifier.graphicsLayer(scaleX = backScale, scaleY = backScale)
+            Button(
+                onClick = { navController.navigate("login") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .graphicsLayer(scaleX = studentScale, scaleY = studentScale),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                contentPadding = PaddingValues(),
+                interactionSource = studentInteractionSource
             ) {
-                Text(
-                    text = "Back",
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.8f),
+                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.6f)
+                                )
+                            ),
+                            shape = RoundedCornerShape(18.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "I'm a Student 👶",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
