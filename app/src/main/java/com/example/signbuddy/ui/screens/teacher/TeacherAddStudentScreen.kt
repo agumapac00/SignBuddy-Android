@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -23,10 +24,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.lazy.LazyRow
 import com.example.signbuddy.ui.components.*
+import com.example.signbuddy.services.TeacherService
+import com.example.signbuddy.viewmodels.AuthViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TeacherAddStudentScreen(navController: NavController? = null) {
+fun TeacherAddStudentScreen(navController: NavController? = null, authViewModel: AuthViewModel? = null) {
     val gradient = Brush.verticalGradient(
         colors = listOf(
             Color(0xFFFFE0B2), // Warm orange
@@ -48,12 +51,30 @@ fun TeacherAddStudentScreen(navController: NavController? = null) {
     val soundEffects = rememberSoundEffects()
     val hapticFeedback = rememberHapticFeedback()
     var showSuccessDialog by remember { mutableStateOf(false) }
+    var showErrorDialog by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
 
     // Form state
     var studentName by remember { mutableStateOf("") }
     var studentEmail by remember { mutableStateOf("") }
     var selectedEmoji by remember { mutableStateOf("🌟") }
     var selectedGrade by remember { mutableStateOf("Kindergarten") }
+    
+    // Services
+    val teacherService = remember { TeacherService() }
+    val scope = rememberCoroutineScope()
+    var teacherId by remember { mutableStateOf("") }
+    
+    // Get teacher ID
+    LaunchedEffect(Unit) {
+        if (authViewModel != null) {
+            val teacherInfo = authViewModel.getCurrentTeacherInfo()
+            teacherInfo?.let { info ->
+                teacherId = info["uid"] as? String ?: ""
+            }
+        }
+    }
 
     val emojis = listOf("🌟", "⭐", "🎯", "🔥", "💪", "🎨", "🚀", "🏆", "🎪", "🎭", "🎨", "🎵")
     val grades = listOf("Kindergarten", "1st Grade", "2nd Grade", "3rd Grade")
@@ -275,9 +296,44 @@ fun TeacherAddStudentScreen(navController: NavController? = null) {
                 
                 Button(
                     onClick = {
-                        soundEffects.playButtonClick()
-                        hapticFeedback.lightTap()
-                        showSuccessDialog = true
+                        if (studentName.isBlank() || studentEmail.isBlank()) {
+                            errorMessage = "Please fill in all required fields"
+                            showErrorDialog = true
+                        } else if (teacherId.isEmpty()) {
+                            errorMessage = "Teacher not found. Please try again."
+                            showErrorDialog = true
+                        } else {
+                            scope.launch {
+                                isLoading = true
+                                try {
+                                    val result = teacherService.addStudentToClass(
+                                        teacherId = teacherId,
+                                        studentName = studentName,
+                                        studentEmail = studentEmail,
+                                        grade = selectedGrade,
+                                        emoji = selectedEmoji
+                                    )
+                                    
+                                    result.onSuccess {
+                                        soundEffects.playButtonClick()
+                                        hapticFeedback.lightTap()
+                                        showSuccessDialog = true
+                                        // Clear form
+                                        studentName = ""
+                                        studentEmail = ""
+                                        selectedEmoji = "🌟"
+                                        selectedGrade = "Kindergarten"
+                                    }.onFailure { exception ->
+                                        errorMessage = "Failed to add student: ${exception.message}"
+                                        showErrorDialog = true
+                                    }
+                                } catch (e: Exception) {
+                                    errorMessage = "An error occurred: ${e.message}"
+                                    showErrorDialog = true
+                                }
+                                isLoading = false
+                            }
+                        }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -285,14 +341,22 @@ fun TeacherAddStudentScreen(navController: NavController? = null) {
                         .graphicsLayer(scaleX = addScale, scaleY = addScale),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
                     shape = RoundedCornerShape(16.dp),
-                    interactionSource = addIs
+                    interactionSource = addIs,
+                    enabled = !isLoading
                 ) {
-                    Text(
-                        text = "➕ Add Student to Class",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    } else {
+                        Text(
+                            text = "➕ Add Student to Class",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
@@ -314,6 +378,26 @@ fun TeacherAddStudentScreen(navController: NavController? = null) {
                     }
                 ) {
                     Text("Done")
+                }
+            }
+        )
+    }
+    
+    // Error dialog
+    if (showErrorDialog) {
+        AlertDialog(
+            onDismissRequest = { showErrorDialog = false },
+            title = { Text("❌ Error") },
+            text = { Text(errorMessage) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        soundEffects.playButtonClick()
+                        hapticFeedback.lightTap()
+                        showErrorDialog = false
+                    }
+                ) {
+                    Text("OK")
                 }
             }
         )

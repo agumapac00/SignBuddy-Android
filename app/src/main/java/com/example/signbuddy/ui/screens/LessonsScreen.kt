@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 
 @Composable
-fun LessonsScreen(navController: NavHostController) {
+fun LessonsScreen(navController: NavHostController, username: String = "") {
     val gradientBackground = Brush.verticalGradient(
         colors = listOf(
             Color(0xFFFFE0B2), // Warm orange
@@ -87,7 +87,7 @@ fun LessonsScreen(navController: NavHostController) {
             subtitle = "Learn the basics step by step",
             icon = Icons.Default.MenuBook,
             color = MaterialTheme.colorScheme.primary,
-            onClick = { navController.navigate("tutorial") }
+            onClick = { navController.navigate("tutorial/$username") }
         )
 
         LessonCard(
@@ -95,7 +95,7 @@ fun LessonsScreen(navController: NavHostController) {
             subtitle = "Practice with AI feedback",
             icon = Icons.Default.PlayCircle,
             color = Color(0xFF4CAF50),
-            onClick = { navController.navigate("practice") }
+            onClick = { navController.navigate("practice/$username") }
         )
 
         LessonCard(
@@ -103,7 +103,7 @@ fun LessonsScreen(navController: NavHostController) {
             subtitle = "Test your skills with a quiz",
             icon = Icons.Default.CheckCircle,
             color = Color(0xFFFF9800),
-            onClick = { navController.navigate("evaluation") }
+            onClick = { navController.navigate("evaluation/$username") }
         )
 
         LessonCard(
@@ -111,7 +111,7 @@ fun LessonsScreen(navController: NavHostController) {
             subtitle = "Compete with friends",
             icon = Icons.Default.People,
             color = Color(0xFF9C27B0),
-            onClick = { navController.navigate("multiplayer") }
+            onClick = { navController.navigate("multiplayer/$username") }
         )
     }
 }

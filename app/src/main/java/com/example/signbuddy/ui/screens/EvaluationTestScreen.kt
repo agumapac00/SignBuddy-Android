@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +57,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.example.signbuddy.services.ProgressTrackingService
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
@@ -72,7 +74,7 @@ import kotlin.math.min
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EvaluationTestScreen(navController: NavController? = null) {
+fun EvaluationTestScreen(navController: NavController? = null, username: String = "") {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -94,6 +96,7 @@ fun EvaluationTestScreen(navController: NavController? = null) {
     var showAchievement by remember { mutableStateOf(false) }
     var currentAchievement by remember { mutableStateOf<com.example.signbuddy.ui.components.Achievement?>(null) }
     var progressData by remember { mutableStateOf(ProgressData()) }
+    val scope = rememberCoroutineScope()
 
     // Permissions
     var hasPermission by remember {
@@ -133,6 +136,12 @@ fun EvaluationTestScreen(navController: NavController? = null) {
 
     // End dialog
     var showEndDialog by remember { mutableStateOf(false) }
+    
+    // Progress tracking
+    val progressTrackingService = remember { ProgressTrackingService() }
+    var sessionStartTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    var showProgressDialog by remember { mutableStateOf(false) }
+    var progressUpdate by remember { mutableStateOf<ProgressTrackingService.ProgressUpdate?>(null) }
 
     // Load model off the UI thread and store interpreter in state
     var modelInterpreter by remember { mutableStateOf<Interpreter?>(null) }
@@ -869,6 +878,26 @@ fun EvaluationTestScreen(navController: NavController? = null) {
                     confirmButton = {
                         TextButton(onClick = {
                             showEndDialog = false
+                            // Track progress when evaluation is completed
+                            if (username.isNotEmpty()) {
+                                scope.launch {
+                                    val sessionResult = ProgressTrackingService.SessionResult(
+                                        mode = "evaluation",
+                                        accuracy = (correctCount.toFloat() / initialTotalAttempts.toFloat()).coerceAtMost(1.0f),
+                                        timeSpent = (System.currentTimeMillis() - sessionStartTime) / 1000,
+                                        lettersCompleted = correctCount,
+                                        perfectSigns = correctCount,
+                                        mistakes = wrongCount
+                                    )
+                                    
+                                    progressTrackingService.updateProgress(username, sessionResult)
+                                        .onSuccess { update ->
+                                            progressUpdate = update
+                                            showProgressDialog = true
+                                        }
+                                        .onFailure { /* Handle error */ }
+                                }
+                            }
                             // reset session to allow replay
                             isPracticing = false
                             letterQueue.clear()
@@ -884,6 +913,45 @@ fun EvaluationTestScreen(navController: NavController? = null) {
                         TextButton(onClick = {
                             showEndDialog = false
                         }) { Text("Close") }
+                    }
+                )
+            }
+            
+            // Progress Update Dialog
+            if (showProgressDialog && progressUpdate != null) {
+                AlertDialog(
+                    onDismissRequest = { showProgressDialog = false },
+                    title = { Text("🎉 Great Job!") },
+                    text = {
+                        Column {
+                            Text("You completed the evaluation test!")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("XP Gained: ${progressUpdate!!.xpGained}")
+                            Text("Score Gained: ${progressUpdate!!.scoreGained}")
+                            if (progressUpdate!!.achievementsUnlocked.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Achievements Unlocked:")
+                                progressUpdate!!.achievementsUnlocked.forEach { achievementId ->
+                                    val (title, description) = progressTrackingService.getAchievementDetails(achievementId)
+                                    Text("• $title: $description", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                            if (progressUpdate!!.levelUp) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("🎊 Level Up! You're now level ${progressUpdate!!.newLevel}!", 
+                                    color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = { 
+                                showProgressDialog = false
+                                navController?.popBackStack()
+                            }
+                        ) {
+                            Text("Continue")
+                        }
                     }
                 )
             }

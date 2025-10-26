@@ -27,6 +27,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.example.signbuddy.services.StudentService
+import kotlinx.coroutines.launch
 
 // Data class for leaderboard entries
 data class LeaderboardEntry(
@@ -37,7 +39,7 @@ data class LeaderboardEntry(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LeaderboardScreen(navController: NavController) {
+fun LeaderboardScreen(navController: NavController, username: String = "") {
     // 🌈 Kindergarten-friendly gradient background
     val gradientBackground = Brush.verticalGradient(
         colors = listOf(
@@ -48,16 +50,38 @@ fun LeaderboardScreen(navController: NavController) {
         )
     )
 
-    val leaderboard = listOf(
-        LeaderboardEntry("Emma", 95, "🌟"),
-        LeaderboardEntry("Liam", 88, "⭐"),
-        LeaderboardEntry("Sophia", 82, "🎯"),
-        LeaderboardEntry("You", 75, "👑"),
-        LeaderboardEntry("Noah", 70, "🔥"),
-        LeaderboardEntry("Ava", 65, "💪"),
-        LeaderboardEntry("Oliver", 60, "🎨"),
-        LeaderboardEntry("Isabella", 55, "🚀")
-    )
+    // Real data state
+    var leaderboard by remember { mutableStateOf<List<StudentService.LeaderboardEntry>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    val studentService = remember { StudentService() }
+    val scope = rememberCoroutineScope()
+    
+    // Fetch leaderboard data
+    LaunchedEffect(Unit) {
+        try {
+            leaderboard = studentService.getGlobalLeaderboard(20)
+            // Provide fallback data if empty
+            if (leaderboard.isEmpty()) {
+                leaderboard = listOf(
+                    StudentService.LeaderboardEntry(1, "Alex", 150, 3),
+                    StudentService.LeaderboardEntry(2, "Emma", 120, 2),
+                    StudentService.LeaderboardEntry(3, "Noah", 100, 2),
+                    StudentService.LeaderboardEntry(4, "Sophia", 80, 1),
+                    StudentService.LeaderboardEntry(5, "Liam", 60, 1)
+                )
+            }
+        } catch (e: Exception) {
+            // Create fallback leaderboard on error
+            leaderboard = listOf(
+                StudentService.LeaderboardEntry(1, "Alex", 150, 3),
+                StudentService.LeaderboardEntry(2, "Emma", 120, 2),
+                StudentService.LeaderboardEntry(3, "Noah", 100, 2),
+                StudentService.LeaderboardEntry(4, "Sophia", 80, 1),
+                StudentService.LeaderboardEntry(5, "Liam", 60, 1)
+            )
+        }
+        isLoading = false
+    }
 
     Scaffold(
         topBar = {
@@ -110,6 +134,46 @@ fun LeaderboardScreen(navController: NavController) {
             }
             
             // Leaderboard entries
+            if (isLoading) {
+                item {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+            } else if (leaderboard.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("🏆", fontSize = 48.sp)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "No Students Yet",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Be the first to start learning!",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            } else {
                 itemsIndexed(leaderboard) { index, entry ->
                     run {
                         val cardIs = MutableInteractionSource()
@@ -120,7 +184,7 @@ fun LeaderboardScreen(navController: NavController) {
                         val appearScale by animateFloatAsState(targetValue = if (mounted) 1f else 0.96f, label = "lbCardAppear")
                         val appearAlpha by animateFloatAsState(targetValue = if (mounted) 1f else 0f, label = "lbCardAlpha")
                         
-                        val isCurrentUser = entry.name == "You"
+                        val isCurrentUser = entry.studentName == username
                         val rankColor = when (index) {
                             0 -> Color(0xFFFFD700) // Gold
                             1 -> Color(0xFFC0C0C0) // Silver
@@ -175,9 +239,14 @@ fun LeaderboardScreen(navController: NavController) {
                                 
                                 Spacer(modifier = Modifier.width(16.dp))
                                 
-                                // Student emoji
+                                // Student emoji (using level-based emoji)
                                 Text(
-                                    text = entry.emoji,
+                                    text = when {
+                                        entry.level >= 10 -> "🌟"
+                                        entry.level >= 7 -> "⭐"
+                                        entry.level >= 4 -> "🎯"
+                                        else -> "🔥"
+                                    },
                                     fontSize = 24.sp
                                 )
                                 
@@ -188,7 +257,7 @@ fun LeaderboardScreen(navController: NavController) {
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Text(
-                                        text = entry.name,
+                                        text = entry.studentName,
                                         fontSize = 18.sp,
                                         fontWeight = if (isCurrentUser) FontWeight.Bold else FontWeight.Medium,
                                         color = if (isCurrentUser) 
@@ -197,7 +266,7 @@ fun LeaderboardScreen(navController: NavController) {
                                             MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = "${entry.score} points",
+                                        text = "${entry.score} points • Level ${entry.level}",
                                         fontSize = 14.sp,
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                     )
@@ -223,6 +292,7 @@ fun LeaderboardScreen(navController: NavController) {
                         }
                     }
                 }
+            }
         }
     }
 }

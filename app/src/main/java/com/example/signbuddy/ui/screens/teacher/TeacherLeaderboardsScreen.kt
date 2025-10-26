@@ -20,6 +20,9 @@ import androidx.navigation.NavController
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.unit.sp
+import com.example.signbuddy.services.TeacherService
+import com.example.signbuddy.viewmodels.AuthViewModel
 
 // Data class for leaderboard entries
 data class LeaderboardEntry(
@@ -31,7 +34,7 @@ data class LeaderboardEntry(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TeacherLeaderboardsScreen(navController: NavController? = null) {
+fun TeacherLeaderboardsScreen(navController: NavController? = null, authViewModel: AuthViewModel? = null) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -44,6 +47,31 @@ fun TeacherLeaderboardsScreen(navController: NavController? = null) {
         }
     ) { inner ->
         var showConfetti by remember { mutableStateOf(false) }
+        var leaderboardEntries by remember { mutableStateOf<List<TeacherService.LeaderboardEntry>>(emptyList()) }
+        var isLoading by remember { mutableStateOf(true) }
+        var teacherId by remember { mutableStateOf("") }
+        val teacherService = remember { TeacherService() }
+        val scope = rememberCoroutineScope()
+        
+        // Fetch leaderboard data
+        LaunchedEffect(Unit) {
+            if (authViewModel != null) {
+                val teacherInfo = authViewModel.getCurrentTeacherInfo()
+                teacherInfo?.let { info ->
+                    teacherId = info["uid"] as? String ?: ""
+                    
+                    if (teacherId.isNotEmpty()) {
+                        try {
+                            leaderboardEntries = teacherService.getClassLeaderboard(teacherId, 10)
+                        } catch (e: Exception) {
+                            // Handle error - keep empty list
+                        }
+                        isLoading = false
+                    }
+                }
+            }
+        }
+        
         val gradient = Brush.verticalGradient(
             colors = listOf(
                 Color(0xFFFFE0B2), // Warm orange
@@ -113,21 +141,53 @@ fun TeacherLeaderboardsScreen(navController: NavController? = null) {
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // Enhanced leaderboard entries
-                    listOf(
-                        LeaderboardEntry("1", "Emma", "980 pts", "🥇"),
-                        LeaderboardEntry("2", "Liam", "940 pts", "🥈"),
-                        LeaderboardEntry("3", "Sophia", "900 pts", "🥉"),
-                        LeaderboardEntry("4", "Noah", "850 pts", "⭐"),
-                        LeaderboardEntry("5", "Ava", "800 pts", "⭐")
-                    ).forEach { entry ->
+                    if (isLoading) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(48.dp),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    } else if (leaderboardEntries.isEmpty()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("🏆", fontSize = 48.sp)
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "No Students Yet",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Add students to see the leaderboard!",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        // Enhanced leaderboard entries
+                        leaderboardEntries.forEach { entry ->
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
                                 containerColor = when(entry.rank) {
-                                    "1" -> Color(0xFFFFD700).copy(alpha = 0.1f)
-                                    "2" -> Color(0xFFC0C0C0).copy(alpha = 0.1f)
-                                    "3" -> Color(0xFFCD7F32).copy(alpha = 0.1f)
+                                    1 -> Color(0xFFFFD700).copy(alpha = 0.1f)
+                                    2 -> Color(0xFFC0C0C0).copy(alpha = 0.1f)
+                                    3 -> Color(0xFFCD7F32).copy(alpha = 0.1f)
                                     else -> Color(0xFFF5F5F5)
                                 }
                             ),
@@ -140,30 +200,36 @@ fun TeacherLeaderboardsScreen(navController: NavController? = null) {
                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
                                 Text(
-                                    text = entry.medal,
+                                    text = when(entry.rank) {
+                                        1 -> "🥇"
+                                        2 -> "🥈"
+                                        3 -> "🥉"
+                                        else -> "⭐"
+                                    },
                                     style = MaterialTheme.typography.headlineSmall
                                 )
                                 Text(
-                                    text = entry.rank,
+                                    text = "${entry.rank}",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = entry.name,
+                                    text = entry.studentName,
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.weight(1f)
                                 )
                                 Text(
-                                    text = entry.score,
+                                    text = "${entry.score} pts",
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                         }
+                    }
                     }
                 }
             }

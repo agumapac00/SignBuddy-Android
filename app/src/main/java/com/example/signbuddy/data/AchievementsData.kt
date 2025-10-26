@@ -109,6 +109,15 @@ object AchievementsData {
             icon = Icons.Default.EmojiEvents,
             unlocked = false,
             category = AchievementCategory.SKILL
+        ),
+        Achievement(
+            id = "beginner_badge",
+            title = "🥇 Beginner Badge",
+            description = "You completed the tutorial! Welcome to SignBuddy!",
+            emoji = "🥇",
+            icon = Icons.Default.EmojiEvents,
+            unlocked = false,
+            category = AchievementCategory.LEARNING
         )
     )
 

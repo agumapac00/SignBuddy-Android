@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
+import com.example.signbuddy.services.StudentService
 
 @Composable
 fun HomeScreen(navController: NavHostController, username: String) {
@@ -32,7 +33,75 @@ fun HomeScreen(navController: NavHostController, username: String) {
             Color(0xFFE3F2FD)  // Light blue
         )
     )
-
+    
+    // Real data state - keeping functionality but with original UI
+    var studentStats by remember { mutableStateOf<StudentService.StudentStats?>(null) }
+    var dayStreak by remember { mutableStateOf(0) }
+    var isLoading by remember { mutableStateOf(true) }
+    val studentService = remember { StudentService() }
+    
+    // Fetch student stats and calculate day streak
+    LaunchedEffect(username) {
+        if (username.isNotEmpty()) {
+            try {
+                studentStats = studentService.getStudentStats(username)
+                // Use streakDays from StudentStats or calculate based on practice sessions
+                studentStats?.let { stats ->
+                    dayStreak = if (stats.streakDays > 0) {
+                        stats.streakDays
+                    } else {
+                        // Calculate streak based on practice sessions (rough estimate)
+                        (stats.practiceSessions / 7).coerceAtLeast(1)
+                    }
+                } ?: run {
+                    // Create default stats for new users
+                    studentStats = StudentService.StudentStats(
+                        totalScore = 0,
+                        totalXp = 0,
+                        level = 1,
+                        practiceSessions = 0,
+                        averageAccuracy = 0f,
+                        lettersLearned = 0,
+                        perfectSigns = 0,
+                        streakDays = 1,
+                        achievements = emptyList()
+                    )
+                    dayStreak = 1 // Default streak for new users
+                }
+            } catch (e: Exception) {
+                // Create default stats on error
+                studentStats = StudentService.StudentStats(
+                    totalScore = 0,
+                    totalXp = 0,
+                    level = 1,
+                    practiceSessions = 0,
+                    averageAccuracy = 0f,
+                    lettersLearned = 0,
+                    perfectSigns = 0,
+                    streakDays = 1,
+                    achievements = emptyList()
+                )
+                dayStreak = 1 // Default streak
+            }
+            isLoading = false
+        } else {
+            // Create default stats for empty username
+            studentStats = StudentService.StudentStats(
+                totalScore = 0,
+                totalXp = 0,
+                level = 1,
+                practiceSessions = 0,
+                averageAccuracy = 0f,
+                lettersLearned = 0,
+                perfectSigns = 0,
+                streakDays = 1,
+                achievements = emptyList()
+            )
+            dayStreak = 1
+            isLoading = false
+        }
+    }
+    
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -74,7 +143,7 @@ fun HomeScreen(navController: NavHostController, username: String) {
                 )
             }
         }
-
+        
         // Quick Stats Row
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -93,12 +162,20 @@ fun HomeScreen(navController: NavHostController, username: String) {
                 ) {
                     Text("🔥", fontSize = 24.sp)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "7",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(
+                            text = "$dayStreak",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     Text(
                         text = "Day Streak",
                         style = MaterialTheme.typography.bodySmall,
@@ -121,12 +198,20 @@ fun HomeScreen(navController: NavHostController, username: String) {
                 ) {
                     Text("📚", fontSize = 24.sp)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "15",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(
+                            text = if (studentStats != null) "${studentStats!!.lettersLearned}" else "0",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     Text(
                         text = "Letters Learned",
                         style = MaterialTheme.typography.bodySmall,
@@ -136,7 +221,7 @@ fun HomeScreen(navController: NavHostController, username: String) {
                 }
             }
         }
-
+        
         // Enhanced Dashboard Cards
         Text(
             text = "🎯 Quick Actions",
@@ -144,28 +229,29 @@ fun HomeScreen(navController: NavHostController, username: String) {
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold
         )
-
+        
         DashboardCard(
             title = "My Progress 📈",
             subtitle = "Track your learning journey",
             icon = Icons.Default.Star,
             color = Color(0xFF4ECDC4), // Teal
-            onClick = { navController.navigate("progress") }
+            onClick = { navController.navigate("progress/$username") }
         )
+        
         DashboardCard(
             title = "My Achievements 🏆",
             subtitle = "See your amazing badges",
             icon = Icons.Default.EmojiEvents,
             color = Color(0xFFFF6B6B), // Coral
-            onClick = { navController.navigate("achievements") }
+            onClick = { navController.navigate("achievements/$username") }
         )
-
+        
         DashboardCard(
             title = "Class Leaderboard 🏅",
             subtitle = "Compete with friends",
             icon = Icons.Default.Leaderboard,
             color = Color(0xFF6C63FF), // Purple
-            onClick = { navController.navigate("leaderboard") }
+            onClick = { navController.navigate("leaderboard/$username") }
         )
     }
 }

@@ -48,6 +48,8 @@ import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import com.example.signbuddy.services.ProgressTrackingService
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
@@ -64,7 +66,7 @@ import kotlin.math.min
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PracticeScreen(navController: NavController? = null) {
+fun PracticeScreen(navController: NavController? = null, username: String = "") {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -84,6 +86,16 @@ fun PracticeScreen(navController: NavController? = null) {
     var isSuccess by remember { mutableStateOf(false) }
     var score by remember { mutableStateOf(0) }
     var streak by remember { mutableStateOf(0) }
+    
+    // Progress tracking
+    val progressTrackingService = remember { ProgressTrackingService() }
+    var sessionStartTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    var lettersCompleted by remember { mutableStateOf(0) }
+    var perfectSigns by remember { mutableStateOf(0) }
+    var mistakes by remember { mutableStateOf(0) }
+    var showProgressDialog by remember { mutableStateOf(false) }
+    var progressUpdate by remember { mutableStateOf<ProgressTrackingService.ProgressUpdate?>(null) }
+    val scope = rememberCoroutineScope()
 
     // Permissions
     var hasPermission by remember {
@@ -150,6 +162,8 @@ fun PracticeScreen(navController: NavController? = null) {
                 // Update score and streak
                 score += 10
                 streak += 1
+                lettersCompleted++
+                perfectSigns++
                 
                 // Show encouraging message
                 encouragingText = EncouragingMessages.getRandomCorrectMessage()
@@ -158,6 +172,27 @@ fun PracticeScreen(navController: NavController? = null) {
                 if (score < totalAttempts * 10) {
                     targetLetter = getRandomTarget(selectedLevel)
                 } else {
+                    // Session completed - track progress
+                    if (username.isNotEmpty()) {
+                        scope.launch {
+                            val sessionResult = ProgressTrackingService.SessionResult(
+                                mode = "practice",
+                                accuracy = (perfectSigns.toFloat() / lettersCompleted.toFloat()).coerceAtMost(1.0f),
+                                timeSpent = (System.currentTimeMillis() - sessionStartTime) / 1000,
+                                lettersCompleted = lettersCompleted,
+                                perfectSigns = perfectSigns,
+                                mistakes = mistakes
+                            )
+                            
+                            progressTrackingService.updateProgress(username, sessionResult)
+                                .onSuccess { update ->
+                                    progressUpdate = update
+                                    showProgressDialog = true
+                                }
+                                .onFailure { /* Handle error */ }
+                        }
+                    }
+                    
                     if (selectedLevel == "Easy") {
                         selectedLevel = "Average"
                         encouragingText = "🎉 Great job! Moving to Average mode!"
@@ -183,6 +218,7 @@ fun PracticeScreen(navController: NavController? = null) {
                 
                 // Reset streak
                 streak = 0
+                mistakes++
                 
                 // Show encouraging message
                 encouragingText = EncouragingMessages.getRandomWrongMessage()
@@ -707,6 +743,45 @@ fun PracticeScreen(navController: NavController? = null) {
                             navController?.popBackStack()
                         }) {
                             Text("Back to Menu")
+                        }
+                    }
+                )
+            }
+            
+            // Progress Update Dialog
+            if (showProgressDialog && progressUpdate != null) {
+                AlertDialog(
+                    onDismissRequest = { showProgressDialog = false },
+                    title = { Text("🎉 Great Job!") },
+                    text = {
+                        Column {
+                            Text("You completed the practice session!")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("XP Gained: ${progressUpdate!!.xpGained}")
+                            Text("Score Gained: ${progressUpdate!!.scoreGained}")
+                            if (progressUpdate!!.achievementsUnlocked.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Achievements Unlocked:")
+                                progressUpdate!!.achievementsUnlocked.forEach { achievementId ->
+                                    val (title, description) = progressTrackingService.getAchievementDetails(achievementId)
+                                    Text("• $title: $description", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                            if (progressUpdate!!.levelUp) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("🎊 Level Up! You're now level ${progressUpdate!!.newLevel}!", 
+                                    color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = { 
+                                showProgressDialog = false
+                                navController?.popBackStack()
+                            }
+                        ) {
+                            Text("Continue")
                         }
                     }
                 )

@@ -25,6 +25,7 @@ import com.example.signbuddy.ui.screens.TeacherRegisterScreen
 import com.example.signbuddy.ui.screens.teacher.TeacherDashboardScreen
 import com.example.signbuddy.ui.dashboard.StudentDashboard
 import com.example.signbuddy.viewmodels.AuthViewModel
+import com.example.signbuddy.viewmodels.MultiplayerViewModel
 import com.example.signbuddy.ui.screens.AchievementsScreen
 import com.example.signbuddy.ui.screens.EvaluationTestScreen
 import com.example.signbuddy.ui.screens.LeaderboardScreen
@@ -64,6 +65,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val navController = rememberNavController()
                     val authViewModel = remember { AuthViewModel() }
+                    val multiplayerViewModel = remember { MultiplayerViewModel() }
 
                     AnimatedNavHost(
                         navController = navController,
@@ -111,20 +113,28 @@ class MainActivity : ComponentActivity() {
                         composable("teacher/quizzes/assign") {
                             TeacherAssignQuizScreen(navController = navController)
                         }
-                        composable("teacher/class/performance") {
-                            TeacherClassPerformanceScreen(navController = navController)
+                        composable(
+                            route = "teacher/class/performance/{teacherId}",
+                            arguments = listOf(navArgument("teacherId") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val teacherId = backStackEntry.arguments?.getString("teacherId") ?: ""
+                            TeacherClassPerformanceScreen(navController = navController, teacherId = teacherId)
                         }
                         composable("teacher/class/leaderboard") {
-                            TeacherLeaderboardsScreen(navController = navController)
+                            TeacherLeaderboardsScreen(navController = navController, authViewModel = authViewModel)
                         }
-                        composable("teacher/reports") {
-                            TeacherReportsScreen(navController = navController)
+                        composable(
+                            route = "teacher/reports/{teacherId}",
+                            arguments = listOf(navArgument("teacherId") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val teacherId = backStackEntry.arguments?.getString("teacherId") ?: ""
+                            TeacherReportsScreen(navController = navController, teacherId = teacherId)
                         }
                         composable("teacher/students") {
-                            TeacherStudentsScreen(navController = navController)
+                            TeacherStudentsScreen(navController = navController, authViewModel = authViewModel)
                         }
                         composable("teacher/students/add") {
-                            TeacherAddStudentScreen(navController = navController)
+                            TeacherAddStudentScreen(navController = navController, authViewModel = authViewModel)
                         }
 
 
@@ -142,40 +152,72 @@ class MainActivity : ComponentActivity() {
                         }
 
                         // Progress
-                        composable("progress") {
-                            ProgressScreen(navController = navController)
+                        composable(
+                            route = "progress/{username}",
+                            arguments = listOf(navArgument("username") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val username = backStackEntry.arguments?.getString("username") ?: ""
+                            ProgressScreen(navController = navController, username = username)
                         }
 
                         // Achievements
-                        composable("achievements") {
-                            AchievementsScreen(navController = navController)
+                        composable(
+                            route = "achievements/{username}",
+                            arguments = listOf(navArgument("username") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val username = backStackEntry.arguments?.getString("username") ?: ""
+                            AchievementsScreen(navController = navController, username = username)
                         }
 
                         // Leaderboard
-                        composable("leaderboard") {
-                            LeaderboardScreen(navController = navController)
+                        composable(
+                            route = "leaderboard/{username}",
+                            arguments = listOf(navArgument("username") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val username = backStackEntry.arguments?.getString("username") ?: ""
+                            LeaderboardScreen(navController = navController, username = username)
                         }
 
                         // Tutorial
-                        composable("tutorial") {
-                            TutorialScreen(navController = navController)
+                        composable(
+                            route = "tutorial/{username}",
+                            arguments = listOf(navArgument("username") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val username = backStackEntry.arguments?.getString("username") ?: ""
+                            TutorialScreen(navController = navController, username = username)
                         }
 
                         // Lessons
-                        composable("lessons") {
-                            LessonsScreen(navController = navController)
+                        composable(
+                            route = "lessons/{username}",
+                            arguments = listOf(navArgument("username") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val username = backStackEntry.arguments?.getString("username") ?: ""
+                            LessonsScreen(navController = navController, username = username)
                         }
 
                         // Practice screen
-                        composable("practice") {
-                            PracticeScreen(navController = navController)
+                        composable(
+                            route = "practice/{username}",
+                            arguments = listOf(navArgument("username") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val username = backStackEntry.arguments?.getString("username") ?: ""
+                            PracticeScreen(navController = navController, username = username)
                         }
                         // Evaluation Test screen
-                        composable("evaluation") {
-                            EvaluationTestScreen(navController = navController)
+                        composable(
+                            route = "evaluation/{username}",
+                            arguments = listOf(navArgument("username") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val username = backStackEntry.arguments?.getString("username") ?: ""
+                            EvaluationTestScreen(navController = navController, username = username)
                         }
-                        composable("multiplayer") {
-                            MultiplayerScreen(navController = navController)
+                        composable(
+                            route = "multiplayer/{username}",
+                            arguments = listOf(navArgument("username") { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val username = backStackEntry.arguments?.getString("username") ?: ""
+                            MultiplayerScreen(navController = navController, multiplayerViewModel = multiplayerViewModel, username = username)
                         }
                     }
                 }

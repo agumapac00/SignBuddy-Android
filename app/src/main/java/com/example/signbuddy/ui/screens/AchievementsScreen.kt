@@ -22,10 +22,12 @@ import androidx.navigation.NavController
 import com.example.signbuddy.data.AchievementsData
 import com.example.signbuddy.ui.components.rememberSoundEffects
 import com.example.signbuddy.ui.components.rememberHapticFeedback
+import com.example.signbuddy.services.StudentService
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AchievementsScreen(navController: NavController) {
+fun AchievementsScreen(navController: NavController, username: String = "") {
     val gradientBackground = Brush.verticalGradient(
         colors = listOf(
             Color(0xFFFFE0B2), // Warm orange
@@ -37,7 +39,82 @@ fun AchievementsScreen(navController: NavController) {
 
     val soundEffects = rememberSoundEffects()
     val hapticFeedback = rememberHapticFeedback()
-    val achievements = AchievementsData.allAchievements
+    
+    // Real data state
+    var studentStats by remember { mutableStateOf<StudentService.StudentStats?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    val studentService = remember { StudentService() }
+    val scope = rememberCoroutineScope()
+    
+    // Fetch student stats
+    LaunchedEffect(username) {
+        if (username.isNotEmpty()) {
+            try {
+                studentStats = studentService.getStudentStats(username)
+                // Provide fallback data if no stats found
+                if (studentStats == null) {
+                    studentStats = StudentService.StudentStats(
+                        totalScore = 0,
+                        totalXp = 0,
+                        level = 1,
+                        practiceSessions = 0,
+                        averageAccuracy = 0f,
+                        lettersLearned = 0,
+                        perfectSigns = 0,
+                        streakDays = 1,
+                        achievements = emptyList()
+                    )
+                }
+            } catch (e: Exception) {
+                // Create default stats on error
+                studentStats = StudentService.StudentStats(
+                    totalScore = 0,
+                    totalXp = 0,
+                    level = 1,
+                    practiceSessions = 0,
+                    averageAccuracy = 0f,
+                    lettersLearned = 0,
+                    perfectSigns = 0,
+                    streakDays = 1,
+                    achievements = emptyList()
+                )
+            }
+        } else {
+            // Create default stats for empty username
+            studentStats = StudentService.StudentStats(
+                totalScore = 0,
+                totalXp = 0,
+                level = 1,
+                practiceSessions = 0,
+                averageAccuracy = 0f,
+                lettersLearned = 0,
+                perfectSigns = 0,
+                streakDays = 1,
+                achievements = emptyList()
+            )
+        }
+        isLoading = false
+    }
+    
+    // Refresh stats periodically to show newly unlocked achievements
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2000) // Refresh every 2 seconds
+            if (username.isNotEmpty()) {
+                try {
+                    studentStats = studentService.getStudentStats(username)
+                } catch (e: Exception) {
+                    // Keep existing stats on error
+                }
+            }
+        }
+    }
+    
+    // Get achievements with real unlock status
+    val achievements = AchievementsData.allAchievements.map { achievement ->
+        val isUnlocked = studentStats?.achievements?.contains(achievement.id) ?: false
+        achievement.copy(unlocked = isUnlocked)
+    }
     val unlockedCount = achievements.count { it.unlocked }
 
     Scaffold(

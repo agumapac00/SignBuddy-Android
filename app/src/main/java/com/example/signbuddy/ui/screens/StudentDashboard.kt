@@ -112,7 +112,7 @@ fun StudentDashboard(
         ) {
             when (selectedTab) {
                 0 -> HomeScreen(navController = navController, username = username)
-                1 -> LessonsScreen(navController = navController)
+                1 -> LessonsScreen(navController = navController, username = username)
                 2 -> ProfileScreen(username = username, navController = navController)
             }
         }

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,13 +32,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.example.signbuddy.services.ProgressTrackingService
 import com.example.signbuddy.R
 import com.example.signbuddy.ui.components.*
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TutorialScreen(navController: NavController? = null) {
+fun TutorialScreen(navController: NavController? = null, username: String = "") {
     val context = LocalContext.current
     
     // Gamification elements
@@ -66,6 +68,16 @@ fun TutorialScreen(navController: NavController? = null) {
     val letters = ('A'..'Z').map { it.toString() }
     var index by remember { mutableStateOf(0) }
     val total = letters.size
+    
+    // Progress tracking
+    val progressTrackingService = remember { ProgressTrackingService() }
+    var sessionStartTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    var lettersCompleted by remember { mutableStateOf(0) }
+    var perfectSigns by remember { mutableStateOf(0) }
+    var mistakes by remember { mutableStateOf(0) }
+    var showProgressDialog by remember { mutableStateOf(false) }
+    var progressUpdate by remember { mutableStateOf<ProgressTrackingService.ProgressUpdate?>(null) }
+    val scope = rememberCoroutineScope()
     val progress = (index + 1).toFloat() / total.toFloat()
 
     var unlockedBeginnerBadge by remember { mutableStateOf(false) }
@@ -325,9 +337,34 @@ fun TutorialScreen(navController: NavController? = null) {
                         soundEffects.playButtonClick()
                         hapticFeedback.lightTap()
                         if (index < total - 1) {
+                            lettersCompleted++
+                            perfectSigns++
                             index++
                         } else {
+                            lettersCompleted++
+                            perfectSigns++
                             unlockedBeginnerBadge = true
+                            
+                            // Track progress when tutorial is completed
+                            if (username.isNotEmpty()) {
+                                scope.launch {
+                                    val sessionResult = ProgressTrackingService.SessionResult(
+                                        mode = "tutorial",
+                                        accuracy = 1.0f, // Tutorial is always 100% as it's just learning
+                                        timeSpent = (System.currentTimeMillis() - sessionStartTime) / 1000,
+                                        lettersCompleted = lettersCompleted,
+                                        perfectSigns = perfectSigns,
+                                        mistakes = mistakes
+                                    )
+                                    
+                                    progressTrackingService.updateProgress(username, sessionResult)
+                                        .onSuccess { update ->
+                                            progressUpdate = update
+                                            showProgressDialog = true
+                                        }
+                                        .onFailure { /* Handle error */ }
+                                }
+                            }
                         }
                     },
                     shape = RoundedCornerShape(16.dp),
@@ -420,5 +457,44 @@ fun TutorialScreen(navController: NavController? = null) {
                 )
             }
         }
+    }
+    
+    // Progress Update Dialog
+    if (showProgressDialog && progressUpdate != null) {
+        AlertDialog(
+            onDismissRequest = { showProgressDialog = false },
+            title = { Text("🎉 Great Job!") },
+            text = {
+                Column {
+                    Text("You completed the tutorial!")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("XP Gained: ${progressUpdate!!.xpGained}")
+                    Text("Score Gained: ${progressUpdate!!.scoreGained}")
+                    if (progressUpdate!!.achievementsUnlocked.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Achievements Unlocked:")
+                        progressUpdate!!.achievementsUnlocked.forEach { achievementId ->
+                            val (title, description) = progressTrackingService.getAchievementDetails(achievementId)
+                            Text("• $title: $description", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    if (progressUpdate!!.levelUp) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("🎊 Level Up! You're now level ${progressUpdate!!.newLevel}!", 
+                            color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { 
+                        showProgressDialog = false
+                        navController?.popBackStack()
+                    }
+                ) {
+                    Text("Continue")
+                }
+            }
+        )
     }
 }

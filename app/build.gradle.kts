@@ -72,6 +72,7 @@
         implementation("com.google.firebase:firebase-auth-ktx")
         implementation("com.google.firebase:firebase-firestore-ktx")
         implementation("com.google.firebase:firebase-analytics-ktx")
+        implementation("com.google.firebase:firebase-database-ktx")
 
         // Debug
         debugImplementation(libs.androidx.compose.ui.tooling)

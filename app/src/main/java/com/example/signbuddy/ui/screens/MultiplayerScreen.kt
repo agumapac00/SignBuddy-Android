@@ -58,9 +58,12 @@ import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.example.signbuddy.ml.ASLModelHelper
 import com.example.signbuddy.ui.components.*
+import com.example.signbuddy.viewmodels.MultiplayerViewModel
+import com.example.signbuddy.viewmodels.MultiplayerGameState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.example.signbuddy.services.ProgressTrackingService
 import kotlinx.coroutines.withContext
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.support.image.ImageProcessor
@@ -182,7 +185,7 @@ enum class GameState {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MultiplayerScreen(navController: NavController? = null) {
+fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel: MultiplayerViewModel? = null, username: String = "") {
     val gradientBackground = Brush.verticalGradient(
         colors = listOf(
             Color(0xFFFFE0B2), // Warm orange
@@ -194,6 +197,11 @@ fun MultiplayerScreen(navController: NavController? = null) {
     
     val soundEffects = rememberSoundEffects()
     val hapticFeedback = rememberHapticFeedback()
+    
+    // ViewModel state
+    val multiplayerGameState by multiplayerViewModel?.gameState?.collectAsState() ?: remember { mutableStateOf(MultiplayerGameState()) }
+    val isLoading by multiplayerViewModel?.isLoading?.collectAsState() ?: remember { mutableStateOf(false) }
+    val errorMessage by multiplayerViewModel?.errorMessage?.collectAsState() ?: remember { mutableStateOf(null) }
     
     // Game state management
     var gameState by remember { mutableStateOf(GameState.LOBBY) }
@@ -209,12 +217,118 @@ fun MultiplayerScreen(navController: NavController? = null) {
     // Camera and model state
     var cameraState by remember { mutableStateOf(CameraState()) }
     var connectionState by remember { mutableStateOf(ConnectionState()) }
+    
+    // Player name input
+    var playerName by remember { mutableStateOf("") }
+    var roomCodeInput by remember { mutableStateOf("") }
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     
-    // Camera preview view
-    val previewView = remember { PreviewView(context) }
-    val cameraExecutor = remember { Executors.newSingleThreadExecutor() } // background thread for CameraX analyzers
+    // Progress tracking
+    val progressTrackingService = remember { ProgressTrackingService() }
+    var sessionStartTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    var lettersCompleted by remember { mutableStateOf(0) }
+    var perfectSigns by remember { mutableStateOf(0) }
+    var mistakes by remember { mutableStateOf(0) }
+    var showProgressDialog by remember { mutableStateOf(false) }
+    var progressUpdate by remember { mutableStateOf<ProgressTrackingService.ProgressUpdate?>(null) }
+    val scope = rememberCoroutineScope()
+    
+    // Sync ViewModel state with local state
+    LaunchedEffect(multiplayerGameState) {
+        // Update connection state
+        connectionState = connectionState.copy(
+            isHost = multiplayerGameState.isHost,
+            roomCode = multiplayerGameState.roomCode,
+            isConnected = multiplayerGameState.isConnected,
+            isWaitingForOpponent = multiplayerGameState.isWaitingForOpponent,
+            opponentFound = multiplayerGameState.opponentFound
+        )
+        
+        // Update player info with force synchronization
+        Log.d("MultiplayerScreen", "=== FORCE SYNCING SCORES FROM VIEWMODEL ===")
+        Log.d("MultiplayerScreen", "Local score from ViewModel: ${multiplayerGameState.localPlayerScore}")
+        Log.d("MultiplayerScreen", "Opponent score from ViewModel: ${multiplayerGameState.opponentPlayerScore}")
+        
+        val oldLocalScore = localPlayer.score
+        val oldOpponentScore = opponentPlayer.score
+        
+        localPlayer = localPlayer.copy(
+            name = multiplayerGameState.localPlayerName,
+            score = multiplayerGameState.localPlayerScore,
+            isConnected = multiplayerGameState.isConnected
+        )
+        
+        opponentPlayer = opponentPlayer.copy(
+            name = multiplayerGameState.opponentPlayerName,
+            score = multiplayerGameState.opponentPlayerScore,
+            isConnected = multiplayerGameState.opponentFound,
+            currentAnswer = multiplayerGameState.opponentCurrentAnswer,
+            isCorrect = multiplayerGameState.opponentIsCorrect
+        )
+        
+        Log.d("MultiplayerScreen", "=== FORCE SCORE SYNC COMPLETE ===")
+        Log.d("MultiplayerScreen", "Local score: $oldLocalScore -> ${localPlayer.score}")
+        Log.d("MultiplayerScreen", "Opponent score: $oldOpponentScore -> ${opponentPlayer.score}")
+        Log.d("MultiplayerScreen", "Both devices should now show same scores!")
+        
+        // Update game state - both players should have the same game state
+        when {
+            multiplayerGameState.gameFinished -> gameState = GameState.FINISHED
+            multiplayerGameState.gameStarted -> gameState = GameState.PLAYING
+            multiplayerGameState.opponentFound && !multiplayerGameState.gameStarted -> {
+                // Both players should go to countdown when opponent is found
+                gameState = GameState.COUNTDOWN
+            }
+            multiplayerGameState.isConnected && multiplayerGameState.isWaitingForOpponent -> gameState = GameState.CONNECTING
+            else -> gameState = GameState.LOBBY
+        }
+    }
+    
+    // Periodic score synchronization to ensure both devices stay in sync
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2000) // Sync every 2 seconds
+            if (multiplayerGameState.isConnected && multiplayerGameState.opponentFound) {
+                Log.d("MultiplayerScreen", "=== PERIODIC SCORE SYNC ===")
+                Log.d("MultiplayerScreen", "Local score from ViewModel: ${multiplayerGameState.localPlayerScore}")
+                Log.d("MultiplayerScreen", "Opponent score from ViewModel: ${multiplayerGameState.opponentPlayerScore}")
+                
+                // Force update local player score from ViewModel
+                val oldLocalScore = localPlayer.score
+                localPlayer = localPlayer.copy(
+                    score = multiplayerGameState.localPlayerScore
+                )
+                
+                // Force update opponent player score from ViewModel
+                val oldOpponentScore = opponentPlayer.score
+                opponentPlayer = opponentPlayer.copy(
+                    score = multiplayerGameState.opponentPlayerScore
+                )
+                
+                if (oldLocalScore != localPlayer.score || oldOpponentScore != opponentPlayer.score) {
+                    Log.d("MultiplayerScreen", "Scores updated during periodic sync:")
+                    Log.d("MultiplayerScreen", "Local: $oldLocalScore -> ${localPlayer.score}")
+                    Log.d("MultiplayerScreen", "Opponent: $oldOpponentScore -> ${opponentPlayer.score}")
+                }
+            }
+        }
+    }
+    
+    // Handle error messages
+    LaunchedEffect(errorMessage) {
+        errorMessage?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            multiplayerViewModel?.clearError()
+        }
+    }
+    
+    // Listen to messages when connected
+    LaunchedEffect(multiplayerGameState.roomCode) {
+        if (multiplayerGameState.roomCode.isNotEmpty()) {
+            multiplayerViewModel?.listenToMessages(multiplayerGameState.roomCode)
+        }
+    }
     
     // Camera & practice states
     var useFrontCamera by remember { mutableStateOf(true) }
@@ -222,6 +336,14 @@ fun MultiplayerScreen(navController: NavController? = null) {
     // Model and analyzer (copied from evaluation screen)
     var modelInterpreter by remember { mutableStateOf<Interpreter?>(null) }
     var handSignAnalyzer by remember { mutableStateOf<MultiplayerHandSignAnalyzer?>(null) }
+    
+    // Ensure both players have the same question type
+    LaunchedEffect(multiplayerGameState.roomCode) {
+        if (multiplayerGameState.roomCode.isNotEmpty()) {
+            // Sync question type with opponent if needed
+            // For now, both players use the same question type selection
+        }
+    }
     
     // Permissions
     var hasPermission by remember {
@@ -236,6 +358,9 @@ fun MultiplayerScreen(navController: NavController? = null) {
     
     // Initialize camera state with permission status
     LaunchedEffect(Unit) {
+        Log.d("MultiplayerScreen", "=== INITIAL SETUP ===")
+        Log.d("MultiplayerScreen", "Player: ${multiplayerGameState.localPlayerName}")
+        Log.d("MultiplayerScreen", "Is Host: ${multiplayerGameState.isHost}")
         Log.d("MultiplayerScreen", "Initial permission check: $hasPermission")
         cameraState = cameraState.copy(isPermissionGranted = hasPermission)
         if (!hasPermission) {
@@ -250,15 +375,22 @@ fun MultiplayerScreen(navController: NavController? = null) {
         cameraState = cameraState.copy(isPermissionGranted = hasPermission)
     }
     
-    LaunchedEffect(Unit) {
-        // Loads model on IO dispatcher
-        Log.d("MultiplayerScreen", "Loading model...")
-        modelInterpreter = withContext(Dispatchers.IO) { loadPracticeModel(context) }
-        Log.d("MultiplayerScreen", "Model loaded: ${modelInterpreter != null}")
+    LaunchedEffect(gameState) {
+        Log.d("MultiplayerScreen", "=== GAME STATE CHANGE ===")
+        Log.d("MultiplayerScreen", "Player: ${multiplayerGameState.localPlayerName}")
+        Log.d("MultiplayerScreen", "Game State: $gameState")
+        Log.d("MultiplayerScreen", "Model Interpreter: ${modelInterpreter != null}")
+        Log.d("MultiplayerScreen", "Camera Permission: ${cameraState.isPermissionGranted}")
+        
+        if (gameState == GameState.PLAYING && modelInterpreter == null) {
+            Log.d("MultiplayerScreen", "Loading model (PLAYING state) for player: ${multiplayerGameState.localPlayerName}")
+            modelInterpreter = withContext(Dispatchers.IO) { loadPracticeModel(context) }
+            Log.d("MultiplayerScreen", "Model loaded: ${modelInterpreter != null} for player: ${multiplayerGameState.localPlayerName}")
+        }
     }
     
     // Cleanup analyzer when composable is disposed
-    DisposableEffect(Unit) {
+    DisposableEffect(modelInterpreter) {
         onDispose {
             handSignAnalyzer?.cleanup()
         }
@@ -307,8 +439,21 @@ fun MultiplayerScreen(navController: NavController? = null) {
             // Reset player answers for new question
             localPlayer = localPlayer.copy(currentAnswer = "", isCorrect = false)
             opponentPlayer = opponentPlayer.copy(currentAnswer = "", isCorrect = false)
+            
+            // Clear opponent answer in ViewModel
+            multiplayerViewModel?.clearOpponentAnswer()
         } else {
             gameState = GameState.FINISHED
+        }
+    }
+    
+    fun startFirstQuestion() {
+        if (questionIndex == 0 && currentQuestion == null) {
+            currentQuestion = allQuestions[0]
+            timeLeft = currentQuestion?.timeLimit ?: 10
+            questionIndex = 1
+            Log.d("MultiplayerScreen", "Started first question for player: ${multiplayerGameState.localPlayerName}")
+            Log.d("MultiplayerScreen", "Question: ${currentQuestion?.content}, Answer: ${currentQuestion?.answer}")
         }
     }
     
@@ -322,54 +467,32 @@ fun MultiplayerScreen(navController: NavController? = null) {
     
     // Start hosting a game
     fun startHosting() {
-        val roomCode = generateRoomCode()
-        val hostId = "host_${System.currentTimeMillis()}"
+        if (playerName.isBlank()) {
+            Toast.makeText(context, "Please enter your name first!", Toast.LENGTH_SHORT).show()
+            return
+        }
         
-        // Create room in global manager
-        RoomManager.createRoom(roomCode, hostId)
-        
-        connectionState = connectionState.copy(
-            isHost = true,
-            roomCode = roomCode,
-            isWaitingForOpponent = true
-        )
+        multiplayerViewModel?.createRoom(playerName)
+        // Immediately show connecting screen while room is being created
         gameState = GameState.CONNECTING
         soundEffects.playButtonClick()
         hapticFeedback.lightTap()
     }
 
     fun joinGame(roomCode: String) {
-        val joinerId = "joiner_${System.currentTimeMillis()}"
-        val upperCode = roomCode.uppercase()
-
-        val room = RoomManager.joinRoom(upperCode, joinerId)
-        if (room != null) {
-            // Successfully joined
-            connectionState = connectionState.copy(
-                isHost = false,
-                roomCode = upperCode,
-                isConnected = true,
-                opponentFound = true,
-                isWaitingForOpponent = false
-            )
-            opponentPlayer = opponentPlayer.copy(isConnected = true)
-            gameState = GameState.COUNTDOWN
-
-            soundEffects.playButtonClick()
-            hapticFeedback.lightTap()
-
-            // ✅ Use coroutine instead of LaunchedEffect
-            coroutineScope.launch {
-                delay(3000)
-                gameState = GameState.PLAYING
-                nextQuestion()
-            }
-        } else {
-            // Invalid or full room
-            soundEffects.playWrong()
-            hapticFeedback.errorPattern()
-            Toast.makeText(context, "❌ Invalid or full room code!", Toast.LENGTH_SHORT).show()
+        if (playerName.isBlank()) {
+            Toast.makeText(context, "Please enter your name first!", Toast.LENGTH_SHORT).show()
+            return
         }
+        
+        if (roomCode.isBlank()) {
+            Toast.makeText(context, "Please enter a room code!", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        multiplayerViewModel?.joinRoom(roomCode, playerName)
+        soundEffects.playButtonClick()
+        hapticFeedback.lightTap()
     }
 
 
@@ -378,35 +501,36 @@ fun MultiplayerScreen(navController: NavController? = null) {
     fun calculateScore(isCorrect: Boolean, responseTime: Long, timeLimit: Int): Int {
         if (!isCorrect) return 0
         
+        // Base score: 10 points per correct answer
+        val baseScore = 10
+        
+        // Time bonus: Higher time = higher bonus (max 10 points)
+        // Convert response time to seconds for easier calculation
+        val responseTimeSeconds = responseTime / 1000.0
+        
         val timeBonus = when {
-            responseTime <= 2000 -> 50  // Very fast: 2 seconds or less
-            responseTime <= 4000 -> 30  // Fast: 2-4 seconds
-            responseTime <= 6000 -> 20  // Medium: 4-6 seconds
-            responseTime <= 8000 -> 10  // Slow: 6-8 seconds
-            else -> 5                   // Very slow: 8+ seconds
+            responseTimeSeconds <= 1.0 -> 1   // Very fast: 1 point
+            responseTimeSeconds <= 2.0 -> 2   // Fast: 2 points
+            responseTimeSeconds <= 3.0 -> 3   // Medium: 3 points
+            responseTimeSeconds <= 4.0 -> 4   // Slower: 4 points
+            responseTimeSeconds <= 5.0 -> 5   // Slow: 5 points
+            responseTimeSeconds <= 6.0 -> 6   // Slower: 6 points
+            responseTimeSeconds <= 7.0 -> 7   // Slow: 7 points
+            responseTimeSeconds <= 8.0 -> 8   // Slower: 8 points
+            responseTimeSeconds <= 9.0 -> 9   // Slow: 9 points
+            else -> 10                        // Very slow: 10 points (max bonus)
         }
         
-        val baseScore = 10
-        return baseScore + timeBonus
+        val totalScore = baseScore + timeBonus
+        Log.d("MultiplayerScreen", "Score calculation: Base=$baseScore, Time=${responseTimeSeconds}s, Bonus=$timeBonus, Total=$totalScore")
+        return totalScore
     }
 
-    // Real connection effect: only start when a real player joins
-    LaunchedEffect(connectionState.roomCode, gameState) {
-        if (gameState == GameState.CONNECTING && connectionState.isHost) {
-            while (true) {
-                val room = RoomManager.getRoom(connectionState.roomCode)
-                if (room?.joinerId != null) {
-                    // Real joiner found!
-                    opponentPlayer = opponentPlayer.copy(isConnected = true)
-                    connectionState = connectionState.copy(opponentFound = true)
-                    gameState = GameState.COUNTDOWN
-                    delay(3000)
-                    gameState = GameState.PLAYING
-                    nextQuestion()
-                    break
-                }
-                delay(1000) // Check every second for joiner
-            }
+    // Advance to countdown when opponentFound toggles true (from realtime ViewModel)
+    LaunchedEffect(connectionState.opponentFound, gameState) {
+        if (gameState == GameState.CONNECTING && connectionState.opponentFound) {
+            opponentPlayer = opponentPlayer.copy(isConnected = true)
+            gameState = GameState.COUNTDOWN
         }
     }
 
@@ -424,55 +548,53 @@ fun MultiplayerScreen(navController: NavController? = null) {
     
     fun submitAnswer(answer: String) {
         val question = currentQuestion ?: return
-        val isCorrect = answer.equals(question.answer, ignoreCase = true)
+        
+        // Allow multiple submissions for the same letter to enable continuous scoring
+        Log.d("MultiplayerScreen", "Processing letter: '$answer' (current answer: '${localPlayer.currentAnswer}')")
+        
         val responseTime = System.currentTimeMillis()
         val questionStartTime = questionIndex * 10000L // Approximate question start time
         val actualResponseTime = responseTime - questionStartTime
         
-        val scoreGained = calculateScore(isCorrect, actualResponseTime, question.timeLimit)
+        // Letter-based scoring: 10 points per letter signed
+        val scoreGained = 10
         
+        // Force score update by always adding points
+        Log.d("MultiplayerScreen", "FORCE SCORING: Adding $scoreGained points for letter '$answer'")
+        
+        Log.d("MultiplayerScreen", "=== LETTER SIGNING ===")
+        Log.d("MultiplayerScreen", "Player: ${multiplayerGameState.localPlayerName}")
+        Log.d("MultiplayerScreen", "Question: ${currentQuestion?.content}")
+        Log.d("MultiplayerScreen", "Letter Signed: '$answer'")
+        Log.d("MultiplayerScreen", "Score Gained: $scoreGained points")
+        Log.d("MultiplayerScreen", "Response Time: $actualResponseTime ms")
+        Log.d("MultiplayerScreen", "Score Before: ${localPlayer.score}")
+        Log.d("MultiplayerScreen", "Score After: ${localPlayer.score + scoreGained}")
+        
+        // Update local player state
+        val oldScore = localPlayer.score
         localPlayer = localPlayer.copy(
             currentAnswer = answer,
-            isCorrect = isCorrect,
+            isCorrect = true, // Always true for letter signing
             responseTime = actualResponseTime,
             score = localPlayer.score + scoreGained,
-            totalCorrectAnswers = if (isCorrect) localPlayer.totalCorrectAnswers + 1 else localPlayer.totalCorrectAnswers
+            totalCorrectAnswers = localPlayer.totalCorrectAnswers + 1
         )
         
-        // Play appropriate sound effect
-        if (isCorrect) {
-            soundEffects.playCorrect()
-            hapticFeedback.successPattern()
-        } else {
-            soundEffects.playWrong()
-            hapticFeedback.errorPattern()
-        }
+        Log.d("MultiplayerScreen", "Score updated: $oldScore -> ${localPlayer.score} (+$scoreGained)")
+        
+        // Submit answer to ViewModel for synchronization
+        multiplayerViewModel?.submitAnswer(answer, true, actualResponseTime)
+        
+        // Play success sound and haptic feedback
+        soundEffects.playCorrect()
+        hapticFeedback.successPattern()
+        Log.d("MultiplayerScreen", "🎉 LETTER '$answer' SIGNED! +$scoreGained points earned!")
     }
     
-    // Simulate opponent response effect
-    LaunchedEffect(localPlayer.currentAnswer) {
-        if (localPlayer.currentAnswer.isNotEmpty()) {
-            delay((1000..3000).random().toLong())
-            val question = currentQuestion ?: return@LaunchedEffect
-            val opponentCorrect = (0..1).random() == 1
-            opponentPlayer = opponentPlayer.copy(
-                currentAnswer = if (opponentCorrect) question.answer else "Wrong",
-                isCorrect = opponentCorrect,
-                responseTime = System.currentTimeMillis() + (500..2000).random(),
-                score = if (opponentCorrect) opponentPlayer.score + 10 else opponentPlayer.score
-            )
-        }
-    }
+    // Note: Opponent responses are now handled through ViewModel message listening
     
-    // Auto-advance to next question when both players have answered
-    LaunchedEffect(localPlayer.currentAnswer, opponentPlayer.currentAnswer) {
-        if (localPlayer.currentAnswer.isNotEmpty() && opponentPlayer.currentAnswer.isNotEmpty()) {
-            delay(3000) // Wait 3 seconds to show results
-            if (gameState == GameState.PLAYING) {
-                nextQuestion()
-            }
-        }
-    }
+    // Removed auto-advance - players must manually proceed to next question
     
     fun resetGame() {
         gameState = GameState.LOBBY
@@ -481,6 +603,9 @@ fun MultiplayerScreen(navController: NavController? = null) {
         timeLeft = 0
         localPlayer = localPlayer.copy(score = 0, currentAnswer = "", isCorrect = false)
         opponentPlayer = opponentPlayer.copy(score = 0, currentAnswer = "", isCorrect = false)
+        
+        // Clear opponent answer in ViewModel
+        multiplayerViewModel?.clearOpponentAnswer()
     }
 
     Scaffold(
@@ -524,6 +649,11 @@ fun MultiplayerScreen(navController: NavController? = null) {
                     onQuestionTypeChanged = { selectedQuestionType = it },
                     onStartHosting = { startHosting() },
                     onJoinGame = { roomCode -> joinGame(roomCode) },
+                    playerName = playerName,
+                    onPlayerNameChanged = { playerName = it },
+                    roomCodeInput = roomCodeInput,
+                    onRoomCodeChanged = { roomCodeInput = it },
+                    isLoading = isLoading,
                     soundEffects = soundEffects,
                     hapticFeedback = hapticFeedback
                 )
@@ -545,7 +675,12 @@ fun MultiplayerScreen(navController: NavController? = null) {
                 )
                 
                 GameState.COUNTDOWN -> CountdownScreen(
-                    onGameStart = { gameState = GameState.PLAYING }
+                    onGameStart = { 
+                        // Start game for both players
+                        multiplayerViewModel?.startGameForBothPlayers()
+                        startFirstQuestion()
+                        gameState = GameState.PLAYING
+                    }
                 )
                 
                 GameState.PLAYING -> PlayingScreen(
@@ -578,10 +713,60 @@ fun MultiplayerScreen(navController: NavController? = null) {
                     localPlayer = localPlayer,
                     opponentPlayer = opponentPlayer,
                     onPlayAgain = { resetGame() },
-                    onBackToLobby = { gameState = GameState.LOBBY }
+                    onBackToLobby = { gameState = GameState.LOBBY },
+                    username = username,
+                    progressTrackingService = progressTrackingService,
+                    scope = scope,
+                    lettersCompleted = lettersCompleted,
+                    perfectSigns = perfectSigns,
+                    mistakes = mistakes,
+                    sessionStartTime = sessionStartTime,
+                    onProgressUpdate = { update ->
+                        progressUpdate = update
+                        showProgressDialog = true
+                    }
                 )
             }
             }
+        }
+        
+        // Progress Update Dialog
+        if (showProgressDialog && progressUpdate != null) {
+            AlertDialog(
+                onDismissRequest = { showProgressDialog = false },
+                title = { Text("🎉 Great Job!") },
+                text = {
+                    Column {
+                        Text("You completed the multiplayer game!")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("XP Gained: ${progressUpdate!!.xpGained}")
+                        Text("Score Gained: ${progressUpdate!!.scoreGained}")
+                        if (progressUpdate!!.achievementsUnlocked.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Achievements Unlocked:")
+                            progressUpdate!!.achievementsUnlocked.forEach { achievementId ->
+                                val (title, description) = progressTrackingService.getAchievementDetails(achievementId)
+                                Text("• $title: $description", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        if (progressUpdate!!.levelUp) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("🎊 Level Up! You're now level ${progressUpdate!!.newLevel}!", 
+                                color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = { 
+                            showProgressDialog = false
+                            navController?.popBackStack()
+                        }
+                    ) {
+                        Text("Continue")
+                    }
+                }
+            )
         }
     }
 }
@@ -592,10 +777,14 @@ fun LobbyScreen(
     onQuestionTypeChanged: (QuestionType) -> Unit,
     onStartHosting: () -> Unit,
     onJoinGame: (String) -> Unit,
+    playerName: String,
+    onPlayerNameChanged: (String) -> Unit,
+    roomCodeInput: String,
+    onRoomCodeChanged: (String) -> Unit,
+    isLoading: Boolean,
     soundEffects: com.example.signbuddy.ui.components.SoundEffectsManager,
     hapticFeedback: com.example.signbuddy.ui.components.HapticFeedbackManager
 ) {
-    var roomCode by remember { mutableStateOf("") }
     var showJoinDialog by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -617,6 +806,42 @@ fun LobbyScreen(
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
             textAlign = TextAlign.Center
         )
+        
+        // Player Name Input
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "👤 Enter Your Name",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                OutlinedTextField(
+                    value = playerName,
+                    onValueChange = onPlayerNameChanged,
+                    label = { Text("Your Name") },
+                    placeholder = { Text("Enter your name...") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    )
+                )
+            }
+        }
         
         // Question Type Selection
         Card(
@@ -777,14 +1002,22 @@ fun LobbyScreen(
                     .weight(1f)
                     .height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
+                enabled = !isLoading && playerName.isNotBlank()
             ) {
-                Text(
-                    text = "🏠 Host Game",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                } else {
+                    Text(
+                        text = "🏠 Host Game",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
             
             // Join Game Button
@@ -828,8 +1061,8 @@ fun LobbyScreen(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         OutlinedTextField(
-                            value = roomCode,
-                            onValueChange = { roomCode = it.uppercase().take(5) },
+                            value = roomCodeInput,
+                            onValueChange = { onRoomCodeChanged(it.uppercase().take(5)) },
                             label = { Text("Room Code") },
                             placeholder = { Text("ABC12") },
                             modifier = Modifier.fillMaxWidth(),
@@ -841,13 +1074,13 @@ fun LobbyScreen(
                 confirmButton = {
                     Button(
                         onClick = {
-                            if (roomCode.length == 5) {
-                                onJoinGame(roomCode)
+                            if (roomCodeInput.length == 5) {
+                                onJoinGame(roomCodeInput)
                                 showJoinDialog = false
-                                roomCode = ""
+                                onRoomCodeChanged("")
                             }
                         },
-                        enabled = roomCode.length == 5,
+                        enabled = roomCodeInput.length == 5,
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -873,19 +1106,10 @@ fun ConnectingScreen(
     onCancel: () -> Unit,
     onOpponentFound: () -> Unit
 ) {
-    // Real player matching - check for opponent joining
-    LaunchedEffect(connectionState.roomCode) {
-        if (connectionState.isHost) {
-            // Host waits for someone to join their room
-            while (connectionState.isWaitingForOpponent) {
-                val room = RoomManager.getRoom(connectionState.roomCode)
-                if (room?.joinerId != null) {
-                    // Opponent joined!
-                    onOpponentFound()
-                    break
-                }
-                delay(1000) // Check every second
-            }
+    // React to realtime opponent join from ViewModel state
+    LaunchedEffect(connectionState.opponentFound) {
+        if (connectionState.opponentFound) {
+            onOpponentFound()
         }
     }
     
@@ -1235,6 +1459,9 @@ fun PlayingScreen(
                 cameraState = cameraState,
                 currentQuestion = currentQuestion,
                 onSignDetected = { sign, confidence ->
+                    Log.d("MultiplayerScreen", "=== ON SIGN DETECTED ===")
+                    Log.d("MultiplayerScreen", "Sign: '$sign', Confidence: $confidence")
+                    
                     onUpdateCameraState(cameraState.copy(
                         lastDetectedSign = sign,
                         confidence = confidence,
@@ -1242,9 +1469,12 @@ fun PlayingScreen(
                     ))
                     onUpdateLocalPlayer(localPlayer.copy(currentAnswer = sign))
                     
-                    // Auto-submit answer if confidence is high enough
-                    if (confidence > 0.7f) {
+                    // Real-time sign detection and scoring
+                    if (confidence > 0.5f) {
+                        Log.d("MultiplayerScreen", "Confidence check passed - calling onAnswerSubmit")
                         onAnswerSubmit(sign)
+                    } else {
+                        Log.d("MultiplayerScreen", "Confidence too low - not submitting answer")
                     }
                 },
                 onAnalysisComplete = {
@@ -1282,6 +1512,18 @@ fun PlayingScreen(
         }
                 
                 Spacer(modifier = Modifier.height(16.dp))
+                
+                // Test scoring mechanism (temporary for debugging)
+                Button(
+                    onClick = {
+                        Log.d("MultiplayerScreen", "TEST: Manual score button clicked")
+                        onAnswerSubmit("TEST")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("TEST SCORE (+10)", color = Color.White)
+                }
                 
             }
         }
@@ -1324,6 +1566,36 @@ fun PlayingScreen(
                     },
                     fontWeight = FontWeight.Medium
                 )
+            }
+            
+            // Manual Controls
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Button(
+                    onClick = { 
+                        Log.d("MultiplayerScreen", "Manual next question clicked")
+                        onNextQuestion() 
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Next Question", color = Color.White)
+                }
+                
+                Button(
+                    onClick = { 
+                        Log.d("MultiplayerScreen", "Reset game clicked - using next question instead")
+                        onNextQuestion() 
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5722)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Skip Question", color = Color.White)
+                }
             }
         }
     }
@@ -1429,10 +1701,40 @@ fun FinalResultsScreen(
     localPlayer: Player,
     opponentPlayer: Player,
     onPlayAgain: () -> Unit,
-    onBackToLobby: () -> Unit
+    onBackToLobby: () -> Unit,
+    username: String = "",
+    progressTrackingService: ProgressTrackingService? = null,
+    scope: kotlinx.coroutines.CoroutineScope? = null,
+    lettersCompleted: Int = 0,
+    perfectSigns: Int = 0,
+    mistakes: Int = 0,
+    sessionStartTime: Long = 0L,
+    onProgressUpdate: (ProgressTrackingService.ProgressUpdate) -> Unit = {}
 ) {
     val isWinner = localPlayer.score > opponentPlayer.score
     val isTie = localPlayer.score == opponentPlayer.score
+    
+    // Track progress when game ends
+    LaunchedEffect(Unit) {
+        if (username.isNotEmpty() && progressTrackingService != null && scope != null) {
+            scope.launch {
+                val sessionResult = ProgressTrackingService.SessionResult(
+                    mode = "multiplayer",
+                    accuracy = if (lettersCompleted > 0) (perfectSigns.toFloat() / lettersCompleted.toFloat()).coerceAtMost(1.0f) else 0f,
+                    timeSpent = if (sessionStartTime > 0) (System.currentTimeMillis() - sessionStartTime) / 1000 else 0,
+                    lettersCompleted = lettersCompleted,
+                    perfectSigns = perfectSigns,
+                    mistakes = mistakes
+                )
+                
+                progressTrackingService.updateProgress(username, sessionResult)
+                    .onSuccess { update ->
+                        onProgressUpdate(update)
+                    }
+                    .onFailure { /* Handle error */ }
+            }
+        }
+    }
     
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -1562,9 +1864,16 @@ fun CameraPreview(
             useFrontCamera = true,
             context = context,
             onPrediction = { prediction: String ->
-                Log.d("CameraPreview", "Prediction received: '$prediction'")
+                Log.d("CameraPreview", "=== PREDICTION RECEIVED ===")
+                Log.d("CameraPreview", "Prediction: '$prediction'")
+                Log.d("CameraPreview", "Is empty: ${prediction.isNullOrEmpty()}")
+                Log.d("CameraPreview", "Is not 'nothing': ${prediction != "nothing"}")
+                
                 if (!prediction.isNullOrEmpty() && prediction != "nothing") {
+                    Log.d("CameraPreview", "Calling onSignDetected with: '$prediction'")
                     onSignDetected(prediction, 0.8f)
+                } else {
+                    Log.d("CameraPreview", "Prediction ignored - empty or 'nothing'")
                 }
                 onAnalysisComplete()
             }
@@ -1661,43 +1970,11 @@ fun CameraPreview(
     }
 }
 
-private fun analyzeImage(
-    imageProxy: ImageProxy,
-    currentQuestion: GameQuestion?,
-    onSignDetected: (String, Float) -> Unit,
-    onAnalysisComplete: () -> Unit
-) {
-    try {
-        val bitmap = imageProxy.toBitmap(0)
-        if (bitmap != null) {
-            // For now, simulate sign detection
-            val detectedSign = simulateSignDetection(currentQuestion?.answer ?: "A")
-            if (detectedSign.isNotEmpty()) {
-                onSignDetected(detectedSign, 0.8f)
-            }
-        }
-        onAnalysisComplete()
-    } catch (e: Exception) {
-        Log.e("ImageAnalysis", "Error analyzing image", e)
-        onAnalysisComplete()
-    } finally {
-        imageProxy.close()
-    }
-}
+// Removed unused analyzeImage function - using MultiplayerHandSignAnalyzer instead
 
 
 
-// Real sign detection using ASL model
-private fun simulateSignDetection(correctAnswer: String): String {
-    // In a real implementation, this would use the ASL model
-    // For now, simulate realistic detection with some accuracy
-    val random = Math.random()
-    return when {
-        random > 0.8 -> correctAnswer  // 20% chance of correct detection
-        random > 0.6 -> ""             // 20% chance of no detection
-        else -> ""                     // 60% chance of no detection (realistic)
-    }
-}
+// Removed unused preprocessImageForModel function - using MultiplayerHandSignAnalyzer instead
 
 // Load TFLite model from assets (CPU-only)
 private fun loadPracticeModel(context: Context): Interpreter? {

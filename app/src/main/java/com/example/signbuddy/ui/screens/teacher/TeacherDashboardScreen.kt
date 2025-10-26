@@ -23,6 +23,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.text.font.FontWeight
 import com.example.signbuddy.ui.components.*
 import com.example.signbuddy.viewmodels.AuthViewModel
+import com.example.signbuddy.services.TeacherService
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,15 +56,32 @@ fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: 
     // Teacher info state
     var teacherName by remember { mutableStateOf("Teacher") }
     var teacherUsername by remember { mutableStateOf("") }
+    var teacherId by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    val teacherService = remember { TeacherService() }
     
-    // Fetch teacher info when screen loads
+    // Class statistics state
+    var classStats by remember { mutableStateOf(TeacherService.ClassStatistics(0, 0, 0f, 0)) }
+    var isLoadingStats by remember { mutableStateOf(true) }
+    
+    // Fetch teacher info and class statistics when screen loads
     LaunchedEffect(Unit) {
         if (authViewModel != null) {
             val teacherInfo = authViewModel.getCurrentTeacherInfo()
             teacherInfo?.let { info ->
                 teacherName = info["displayName"] as? String ?: "Teacher"
                 teacherUsername = info["username"] as? String ?: ""
+                teacherId = info["uid"] as? String ?: ""
+                
+                // Fetch class statistics
+                if (teacherId.isNotEmpty()) {
+                    try {
+                        classStats = teacherService.getClassStatistics(teacherId)
+                    } catch (e: Exception) {
+                        // Handle error - keep default values
+                    }
+                    isLoadingStats = false
+                }
             }
         }
     }
@@ -326,7 +344,7 @@ fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: 
                         onClick = {
                             soundEffects.playButtonClick()
                             hapticFeedback.lightTap()
-                            navController?.navigate("teacher/class/performance")
+                            navController?.navigate("teacher/class/performance/$teacherId")
                         },
                         modifier = Modifier
                             .weight(1f)
@@ -409,7 +427,7 @@ fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: 
                             val openPressed by openIs.collectIsPressedAsState()
                             val openScale by animateFloatAsState(targetValue = if (openPressed) 0.96f else 1f, label = "openScale")
                             Button(
-                                onClick = { navController?.navigate("teacher/reports") },
+                                onClick = { navController?.navigate("teacher/reports/$teacherId") },
                                 interactionSource = openIs,
                                 modifier = Modifier.graphicsLayer(scaleX = openScale, scaleY = openScale)
                             ) {
@@ -447,12 +465,19 @@ fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: 
                             ) {
                                 Text("👥", fontSize = 32.sp)
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "24",
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                if (isLoadingStats) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    Text(
+                                        text = "${classStats.totalStudents}",
+                                        style = MaterialTheme.typography.headlineMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                                 Text(
                                     text = "Total Students",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -466,12 +491,19 @@ fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: 
                             ) {
                                 Text("🌟", fontSize = 32.sp)
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "18",
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    color = Color(0xFF4CAF50),
-                                    fontWeight = FontWeight.Bold
-                                )
+                                if (isLoadingStats) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = Color(0xFF4CAF50)
+                                    )
+                                } else {
+                                    Text(
+                                        text = "${classStats.activeStudents}",
+                                        style = MaterialTheme.typography.headlineMedium,
+                                        color = Color(0xFF4CAF50),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                                 Text(
                                     text = "Active Today",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -485,12 +517,19 @@ fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: 
                             ) {
                                 Text("📈", fontSize = 32.sp)
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "78%",
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    color = Color(0xFFFF9800),
-                                    fontWeight = FontWeight.Bold
-                                )
+                                if (isLoadingStats) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = Color(0xFFFF9800)
+                                    )
+                                } else {
+                                    Text(
+                                        text = "${(classStats.averageProgress * 100).toInt()}%",
+                                        style = MaterialTheme.typography.headlineMedium,
+                                        color = Color(0xFFFF9800),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                                 Text(
                                     text = "Avg Progress",
                                     style = MaterialTheme.typography.bodyMedium,

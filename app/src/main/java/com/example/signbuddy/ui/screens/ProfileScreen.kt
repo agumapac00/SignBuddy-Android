@@ -26,10 +26,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.signbuddy.data.AchievementsData
+import com.example.signbuddy.services.StudentService
+import kotlinx.coroutines.launch
 
 @Composable
 fun ProfileScreen(username: String, navController: androidx.navigation.NavController? = null) {
-    val progressValue = 0.72f // Example: 72% progress
     val gradientBackground = Brush.verticalGradient(
         colors = listOf(
             Color(0xFFFFE0B2), // Warm orange
@@ -38,7 +39,68 @@ fun ProfileScreen(username: String, navController: androidx.navigation.NavContro
             Color(0xFFE3F2FD)  // Light blue
         )
     )
-    val achievements = AchievementsData.allAchievements
+    
+    // Real data state
+    var studentStats by remember { mutableStateOf<StudentService.StudentStats?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    val studentService = remember { StudentService() }
+    val scope = rememberCoroutineScope()
+    
+    // Fetch student stats
+    LaunchedEffect(username) {
+        if (username.isNotEmpty()) {
+            try {
+                studentStats = studentService.getStudentStats(username)
+                // Provide fallback data if no stats found
+                if (studentStats == null) {
+                    studentStats = StudentService.StudentStats(
+                        totalScore = 0,
+                        totalXp = 0,
+                        level = 1,
+                        practiceSessions = 0,
+                        averageAccuracy = 0f,
+                        lettersLearned = 0,
+                        perfectSigns = 0,
+                        streakDays = 1,
+                        achievements = emptyList()
+                    )
+                }
+            } catch (e: Exception) {
+                // Create default stats on error
+                studentStats = StudentService.StudentStats(
+                    totalScore = 0,
+                    totalXp = 0,
+                    level = 1,
+                    practiceSessions = 0,
+                    averageAccuracy = 0f,
+                    lettersLearned = 0,
+                    perfectSigns = 0,
+                    streakDays = 1,
+                    achievements = emptyList()
+                )
+            }
+        } else {
+            // Create default stats for empty username
+            studentStats = StudentService.StudentStats(
+                totalScore = 0,
+                totalXp = 0,
+                level = 1,
+                practiceSessions = 0,
+                averageAccuracy = 0f,
+                lettersLearned = 0,
+                perfectSigns = 0,
+                streakDays = 1,
+                achievements = emptyList()
+            )
+        }
+        isLoading = false
+    }
+    
+    // Get achievements with real unlock status
+    val achievements = AchievementsData.allAchievements.map { achievement ->
+        val isUnlocked = studentStats?.achievements?.contains(achievement.id) ?: false
+        achievement.copy(unlocked = isUnlocked)
+    }
     
     var showLogoutDialog by remember { mutableStateOf(false) }
 
@@ -103,7 +165,7 @@ fun ProfileScreen(username: String, navController: androidx.navigation.NavContro
                     Text("📈", fontSize = 24.sp)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "${(progressValue * 100).toInt()}%",
+                        text = if (isLoading) "..." else "${((studentStats?.averageAccuracy ?: 0f) * 100).toInt()}%",
                         style = MaterialTheme.typography.headlineMedium,
                         color = Color.White,
                         fontWeight = FontWeight.Bold
@@ -156,9 +218,9 @@ fun ProfileScreen(username: String, navController: androidx.navigation.NavContro
 
         ProfileCard("Username", username, Icons.Default.Person, MaterialTheme.colorScheme.primary)
 
-        ProfileCard("Level", "Level 3 ⭐⭐⭐", Icons.Default.Star, MaterialTheme.colorScheme.secondary)
+        ProfileCard("Level", if (isLoading) "Loading..." else "Level ${studentStats?.level ?: 1} ⭐⭐⭐", Icons.Default.Star, MaterialTheme.colorScheme.secondary)
 
-        ProgressCard(progressValue)
+        ProgressCard(if (isLoading) 0f else studentStats?.averageAccuracy ?: 0f)
 
         AchievementsCard(achievements)
 
