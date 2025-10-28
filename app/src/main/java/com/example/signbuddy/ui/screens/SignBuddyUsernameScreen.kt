@@ -186,6 +186,11 @@ fun SignBuddyUsernameScreen(navController: NavController) {
                                 firestoreService.findStudentByUsername(studentUsername)
                                     .onSuccess { studentProfile ->
                                         if (studentProfile != null) {
+                                            // Update login streak
+                                            firestoreService.updateLoginStreak(studentUsername)
+                                                .onFailure { error ->
+                                                    android.util.Log.e("SignBuddyUsernameScreen", "Failed to update login streak", error)
+                                                }
                                             // Student found, navigate to dashboard
                                             navController.navigate("studentDashboard/${studentProfile.username}")
                                         } else {

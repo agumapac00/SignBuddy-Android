@@ -881,6 +881,12 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
                             // Track progress when evaluation is completed
                             if (username.isNotEmpty()) {
                                 scope.launch {
+                                    android.util.Log.d("EvaluationTestScreen", "=== EVALUATION COMPLETE ===")
+                                    android.util.Log.d("EvaluationTestScreen", "Correct count: $correctCount")
+                                    android.util.Log.d("EvaluationTestScreen", "Letters completed: $correctCount")
+                                    android.util.Log.d("EvaluationTestScreen", "Total attempts: $initialTotalAttempts")
+                                    android.util.Log.d("EvaluationTestScreen", "Accuracy: ${correctCount.toFloat() / initialTotalAttempts.toFloat()}")
+                                    
                                     val sessionResult = ProgressTrackingService.SessionResult(
                                         mode = "evaluation",
                                         accuracy = (correctCount.toFloat() / initialTotalAttempts.toFloat()).coerceAtMost(1.0f),
@@ -890,6 +896,7 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
                                         mistakes = wrongCount
                                     )
                                     
+                                    android.util.Log.d("EvaluationTestScreen", "Calling updateProgress with lettersCompleted=$correctCount")
                                     progressTrackingService.updateProgress(username, sessionResult)
                                         .onSuccess { update ->
                                             progressUpdate = update
@@ -1079,14 +1086,20 @@ class EvaluationHandSignAnalyzer(
 
             // Run inference (output shape expected [1, numFeatures, numDetections])
             // Use synchronized block to prevent concurrent access
+            var inferenceSucceeded = false
             synchronized(interpreterLock) {
                 try {
                     modelInterpreter.run(inputBuffer, outputArray3D)
+                    inferenceSucceeded = true
                 } catch (e: Exception) {
                     Log.e(TAG, "Error during model inference", e)
                     handler.post { onPrediction("") }
-                    return
                 }
+            }
+            
+            // If inference failed, exit early
+            if (!inferenceSucceeded) {
+                return
             }
 
             // Flatten output for processing

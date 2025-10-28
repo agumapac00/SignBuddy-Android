@@ -57,7 +57,6 @@ fun TeacherAddStudentScreen(navController: NavController? = null, authViewModel:
 
     // Form state
     var studentName by remember { mutableStateOf("") }
-    var studentEmail by remember { mutableStateOf("") }
     var selectedEmoji by remember { mutableStateOf("🌟") }
     var selectedGrade by remember { mutableStateOf("Kindergarten") }
     
@@ -154,32 +153,26 @@ fun TeacherAddStudentScreen(navController: NavController? = null, authViewModel:
                         modifier = Modifier.padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
-                        // Student Name
+                        // Student Name/Username
                         OutlinedTextField(
                             value = studentName,
-                            onValueChange = { studentName = it },
-                            label = { Text("👤 Student Name") },
-                            placeholder = { Text("Enter student's full name") },
+                            onValueChange = { 
+                                // Only allow alphanumeric characters, spaces, and underscores
+                                if (it.all { it.isLetterOrDigit() || it.isWhitespace() || it == '_' }) {
+                                    studentName = it
+                                }
+                            },
+                            label = { Text("👤 Student Username") },
+                            placeholder = { Text("Enter student's username (e.g., john_smith)") },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = MaterialTheme.colorScheme.primary,
                                 unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                            )
-                        )
-
-                        // Student Email
-                        OutlinedTextField(
-                            value = studentEmail,
-                            onValueChange = { studentEmail = it },
-                            label = { Text("📧 Email Address") },
-                            placeholder = { Text("Enter student's email") },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                            )
+                            ),
+                            supportingText = {
+                                Text("Only letters, numbers, spaces, and underscores allowed")
+                            }
                         )
 
                         // Grade Selection
@@ -296,8 +289,8 @@ fun TeacherAddStudentScreen(navController: NavController? = null, authViewModel:
                 
                 Button(
                     onClick = {
-                        if (studentName.isBlank() || studentEmail.isBlank()) {
-                            errorMessage = "Please fill in all required fields"
+                        if (studentName.isBlank()) {
+                            errorMessage = "Please enter a username for the student"
                             showErrorDialog = true
                         } else if (teacherId.isEmpty()) {
                             errorMessage = "Teacher not found. Please try again."
@@ -309,21 +302,22 @@ fun TeacherAddStudentScreen(navController: NavController? = null, authViewModel:
                                     val result = teacherService.addStudentToClass(
                                         teacherId = teacherId,
                                         studentName = studentName,
-                                        studentEmail = studentEmail,
                                         grade = selectedGrade,
                                         emoji = selectedEmoji
                                     )
                                     
-                                    result.onSuccess {
+                                    result.onSuccess { studentId ->
+                                        android.util.Log.d("TeacherAddStudentScreen", "✅ Student added successfully! ID: $studentId")
+                                        android.util.Log.d("TeacherAddStudentScreen", "✅ Student will now appear in student list and leaderboard")
                                         soundEffects.playButtonClick()
                                         hapticFeedback.lightTap()
                                         showSuccessDialog = true
                                         // Clear form
                                         studentName = ""
-                                        studentEmail = ""
                                         selectedEmoji = "🌟"
                                         selectedGrade = "Kindergarten"
                                     }.onFailure { exception ->
+                                        android.util.Log.e("TeacherAddStudentScreen", "❌ Failed to add student", exception)
                                         errorMessage = "Failed to add student: ${exception.message}"
                                         showErrorDialog = true
                                     }

@@ -26,7 +26,7 @@ object AchievementsData {
             description = "You learned your first letter! Great job!",
             emoji = "🌟",
             icon = Icons.Default.MilitaryTech,
-            unlocked = true,
+            unlocked = false, // Will be determined by user's achievement list
             category = AchievementCategory.LEARNING
         ),
         Achievement(
@@ -35,17 +35,8 @@ object AchievementsData {
             description = "You practiced for 3 days in a row! Keep it up!",
             emoji = "🔥",
             icon = Icons.Default.EmojiEvents,
-            unlocked = true,
+            unlocked = false, // Will be determined by user's achievement list
             category = AchievementCategory.PROGRESS
-        ),
-        Achievement(
-            id = "perfect_score",
-            title = "⭐ Perfect Score",
-            description = "You got 5 signs perfect in a row! Amazing!",
-            emoji = "⭐",
-            icon = Icons.Default.Star,
-            unlocked = false,
-            category = AchievementCategory.SKILL
         ),
         Achievement(
             id = "goal_getter",
@@ -53,7 +44,7 @@ object AchievementsData {
             description = "You learned 10 letters! You're on fire!",
             emoji = "🎯",
             icon = Icons.Default.EmojiEvents,
-            unlocked = true,
+            unlocked = false, // Will be determined by user's achievement list
             category = AchievementCategory.PROGRESS
         ),
         Achievement(
@@ -62,7 +53,7 @@ object AchievementsData {
             description = "You learned all 26 letters! You're a superstar!",
             emoji = "🏆",
             icon = Icons.Default.EmojiEvents,
-            unlocked = false,
+            unlocked = false, // Will be determined by user's achievement list
             category = AchievementCategory.LEARNING
         ),
         Achievement(
@@ -71,43 +62,25 @@ object AchievementsData {
             description = "You practiced for 7 days straight! Incredible!",
             emoji = "💪",
             icon = Icons.Default.EmojiEvents,
-            unlocked = false,
+            unlocked = false, // Will be determined by user's achievement list
             category = AchievementCategory.PROGRESS
-        ),
-        Achievement(
-            id = "creative_learner",
-            title = "🎨 Creative Learner",
-            description = "You tried 5 different practice modes! So creative!",
-            emoji = "🎨",
-            icon = Icons.Default.EmojiEvents,
-            unlocked = false,
-            category = AchievementCategory.SKILL
-        ),
-        Achievement(
-            id = "sign_language_royalty",
-            title = "👑 Sign Language King/Queen",
-            description = "You mastered the entire alphabet! You're the best!",
-            emoji = "👑",
-            icon = Icons.Default.EmojiEvents,
-            unlocked = false,
-            category = AchievementCategory.SPECIAL
         ),
         Achievement(
             id = "evaluation_expert",
             title = "📝 Evaluation Expert",
-            description = "You completed your first evaluation test! Well done!",
+            description = "You scored 90%+ in an evaluation! Well done!",
             emoji = "📝",
             icon = Icons.Default.EmojiEvents,
-            unlocked = true,
+            unlocked = false, // Will be determined by user's achievement list
             category = AchievementCategory.SKILL
         ),
         Achievement(
             id = "speed_demon",
             title = "⚡ Speed Demon",
-            description = "You completed an evaluation in under 2 minutes! Lightning fast!",
+            description = "You completed a session in under 30 seconds! Lightning fast!",
             emoji = "⚡",
             icon = Icons.Default.EmojiEvents,
-            unlocked = false,
+            unlocked = false, // Will be determined by user's achievement list
             category = AchievementCategory.SKILL
         ),
         Achievement(
@@ -116,7 +89,7 @@ object AchievementsData {
             description = "You completed the tutorial! Welcome to SignBuddy!",
             emoji = "🥇",
             icon = Icons.Default.EmojiEvents,
-            unlocked = false,
+            unlocked = false, // Will be determined by user's achievement list
             category = AchievementCategory.LEARNING
         )
     )

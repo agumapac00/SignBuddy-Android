@@ -28,6 +28,8 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AchievementsScreen(navController: NavController, username: String = "") {
+    // Log the username to debug
+    android.util.Log.d("AchievementsScreen", "🔍 AchievementsScreen loaded with username: '$username'")
     val gradientBackground = Brush.verticalGradient(
         colors = listOf(
             Color(0xFFFFE0B2), // Warm orange
@@ -42,17 +44,26 @@ fun AchievementsScreen(navController: NavController, username: String = "") {
     
     // Real data state
     var studentStats by remember { mutableStateOf<StudentService.StudentStats?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    val studentService = remember { StudentService() }
-    val scope = rememberCoroutineScope()
+            var isLoading by remember { mutableStateOf(true) }
+            val studentService = remember { StudentService() }
+            val scope = rememberCoroutineScope()
     
-    // Fetch student stats
+    // Fetch student stats on load
     LaunchedEffect(username) {
+        android.util.Log.d("AchievementsScreen", "=== LOADING ACHIEVEMENTS ===")
+        android.util.Log.d("AchievementsScreen", "Username received: $username")
+        
         if (username.isNotEmpty()) {
             try {
+                android.util.Log.d("AchievementsScreen", "Fetching stats for: $username")
                 studentStats = studentService.getStudentStats(username)
+                
+                android.util.Log.d("AchievementsScreen", "Stats fetched: $studentStats")
+                android.util.Log.d("AchievementsScreen", "Achievements from stats: ${studentStats?.achievements}")
+                
                 // Provide fallback data if no stats found
                 if (studentStats == null) {
+                    android.util.Log.w("AchievementsScreen", "No stats found for username: $username")
                     studentStats = StudentService.StudentStats(
                         totalScore = 0,
                         totalXp = 0,
@@ -64,8 +75,16 @@ fun AchievementsScreen(navController: NavController, username: String = "") {
                         streakDays = 1,
                         achievements = emptyList()
                     )
+                } else {
+                    android.util.Log.d("AchievementsScreen", "Stats loaded successfully!")
+                    android.util.Log.d("AchievementsScreen", "Achievement count: ${studentStats?.achievements?.size}")
+                    studentStats?.achievements?.forEach { achievement ->
+                        android.util.Log.d("AchievementsScreen", "  - $achievement")
+                    }
                 }
             } catch (e: Exception) {
+                android.util.Log.e("AchievementsScreen", "Error in initial load", e)
+                e.printStackTrace()
                 // Create default stats on error
                 studentStats = StudentService.StudentStats(
                     totalScore = 0,
@@ -116,6 +135,17 @@ fun AchievementsScreen(navController: NavController, username: String = "") {
         achievement.copy(unlocked = isUnlocked)
     }
     val unlockedCount = achievements.count { it.unlocked }
+    
+    // Log achievement status only when it changes
+    LaunchedEffect(studentStats?.achievements) {
+        if (studentStats != null) {
+            android.util.Log.d("AchievementsScreen", "=== ACHIEVEMENT STATUS UPDATE ===")
+            android.util.Log.d("AchievementsScreen", "Total achievements: ${achievements.size}")
+            android.util.Log.d("AchievementsScreen", "Unlocked: $unlockedCount")
+            android.util.Log.d("AchievementsScreen", "Beginner Badge: ${achievements.find { it.id == "beginner_badge" }?.unlocked}")
+            android.util.Log.d("AchievementsScreen", "Student's achievement list: ${studentStats?.achievements}")
+        }
+    }
 
     Scaffold(
         topBar = {

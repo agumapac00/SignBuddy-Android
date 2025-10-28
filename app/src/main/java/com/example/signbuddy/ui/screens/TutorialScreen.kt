@@ -347,6 +347,12 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
                             
                             // Track progress when tutorial is completed
                             if (username.isNotEmpty()) {
+                                android.util.Log.d("TutorialScreen", "=== TUTORIAL COMPLETE ===")
+                                android.util.Log.d("TutorialScreen", "Username: $username")
+                                android.util.Log.d("TutorialScreen", "Letters completed: $lettersCompleted")
+                                android.util.Log.d("TutorialScreen", "Perfect signs: $perfectSigns")
+                                android.util.Log.d("TutorialScreen", "Mistakes: $mistakes")
+                                
                                 scope.launch {
                                     val sessionResult = ProgressTrackingService.SessionResult(
                                         mode = "tutorial",
@@ -357,13 +363,34 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
                                         mistakes = mistakes
                                     )
                                     
+                                    android.util.Log.d("TutorialScreen", "Calling updateProgress with username: $username")
+                                    
                                     progressTrackingService.updateProgress(username, sessionResult)
                                         .onSuccess { update ->
+                                            android.util.Log.d("TutorialScreen", "✅ Progress updated successfully!")
+                                            android.util.Log.d("TutorialScreen", "Achievements unlocked: ${update.achievementsUnlocked}")
+                                            android.util.Log.d("TutorialScreen", "XP gained: ${update.xpGained}")
+                                            android.util.Log.d("TutorialScreen", "Score gained: ${update.scoreGained}")
+                                            
+                                            if (update.achievementsUnlocked.isNotEmpty()) {
+                                                android.util.Log.d("TutorialScreen", "🎉 ${update.achievementsUnlocked.size} achievements unlocked!")
+                                                update.achievementsUnlocked.forEach { achievementId ->
+                                                    android.util.Log.d("TutorialScreen", "  - $achievementId")
+                                                }
+                                            } else {
+                                                android.util.Log.w("TutorialScreen", "⚠️ No achievements unlocked!")
+                                            }
+                                            
                                             progressUpdate = update
                                             showProgressDialog = true
                                         }
-                                        .onFailure { /* Handle error */ }
+                                        .onFailure { exception ->
+                                            android.util.Log.e("TutorialScreen", "❌ Failed to update progress", exception)
+                                            exception.printStackTrace()
+                                        }
                                 }
+                            } else {
+                                android.util.Log.w("TutorialScreen", "⚠️ Username is empty! Cannot save progress.")
                             }
                         }
                     },
@@ -392,7 +419,7 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
                     onClick = {
                         soundEffects.playButtonClick()
                         hapticFeedback.lightTap()
-                        navController?.navigate("studentDashboard/Student") {
+                        navController?.navigate("studentDashboard/$username") {
                             popUpTo("tutorial") { inclusive = true }
                             launchSingleTop = true
                         }
@@ -439,7 +466,7 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
                         TextButton(
                             onClick = {
                                 unlockedBeginnerBadge = false
-                                navController?.navigate("studentDashboard/Student") {
+                                navController?.navigate("studentDashboard/$username") {
                                     popUpTo("tutorial") { inclusive = true }
                                     launchSingleTop = true
                                 }
