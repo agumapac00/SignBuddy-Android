@@ -28,7 +28,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.signbuddy.services.StudentService
+import com.example.signbuddy.services.TeacherService
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 // Data class for leaderboard entries
 data class LeaderboardEntry(
@@ -51,34 +53,55 @@ fun LeaderboardScreen(navController: NavController, username: String = "") {
     )
 
     // Real data state
-    var leaderboard by remember { mutableStateOf<List<StudentService.LeaderboardEntry>>(emptyList()) }
+    var classLeaderboard by remember { mutableStateOf<List<TeacherService.LeaderboardEntry>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var isEnrolled by remember { mutableStateOf(false) }
+    var teacherId by remember { mutableStateOf<String?>(null) }
     val studentService = remember { StudentService() }
+    val teacherService = remember { com.example.signbuddy.services.TeacherService() }
     val scope = rememberCoroutineScope()
     
-    // Fetch leaderboard data
-    LaunchedEffect(Unit) {
+    // Fetch student's enrollment status and class leaderboard
+    LaunchedEffect(username) {
         try {
-            leaderboard = studentService.getGlobalLeaderboard(20)
-            // Provide fallback data if empty
-            if (leaderboard.isEmpty()) {
-                leaderboard = listOf(
-                    StudentService.LeaderboardEntry(1, "Alex", 150, 3),
-                    StudentService.LeaderboardEntry(2, "Emma", 120, 2),
-                    StudentService.LeaderboardEntry(3, "Noah", 100, 2),
-                    StudentService.LeaderboardEntry(4, "Sophia", 80, 1),
-                    StudentService.LeaderboardEntry(5, "Liam", 60, 1)
-                )
+            if (username.isNotEmpty()) {
+                android.util.Log.d("LeaderboardScreen", "Fetching leaderboard for username: $username")
+                
+                // Get student profile from Firestore to check teacherId
+                val studentSnapshot = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                    .collection("studentProfiles")
+                    .whereEqualTo("username", username)
+                    .limit(1)
+                    .get()
+                    .await()
+                
+                android.util.Log.d("LeaderboardScreen", "Student snapshot size: ${studentSnapshot.size()}")
+                
+                if (!studentSnapshot.isEmpty) {
+                    val student = studentSnapshot.documents.first().toObject(com.example.signbuddy.data.StudentProfile::class.java)
+                    android.util.Log.d("LeaderboardScreen", "Student profile: $student")
+                    student?.let {
+                        teacherId = it.teacherId
+                        isEnrolled = !it.teacherId.isNullOrEmpty()
+                        
+                        android.util.Log.d("LeaderboardScreen", "teacherId: $teacherId, isEnrolled: $isEnrolled")
+                        
+                        // If enrolled, fetch class leaderboard
+                        if (isEnrolled && teacherId != null) {
+                            android.util.Log.d("LeaderboardScreen", "Fetching class leaderboard for teacherId: $teacherId")
+                            classLeaderboard = teacherService.getClassLeaderboard(teacherId!!, 20)
+                            android.util.Log.d("LeaderboardScreen", "Class leaderboard entries: ${classLeaderboard.size}")
+                            classLeaderboard.forEachIndexed { index, entry ->
+                                android.util.Log.d("LeaderboardScreen", "Entry $index: ${entry.studentName} - ${entry.score}")
+                            }
+                        }
+                    }
+                } else {
+                    android.util.Log.w("LeaderboardScreen", "No student found with username: $username")
+                }
             }
         } catch (e: Exception) {
-            // Create fallback leaderboard on error
-            leaderboard = listOf(
-                StudentService.LeaderboardEntry(1, "Alex", 150, 3),
-                StudentService.LeaderboardEntry(2, "Emma", 120, 2),
-                StudentService.LeaderboardEntry(3, "Noah", 100, 2),
-                StudentService.LeaderboardEntry(4, "Sophia", 80, 1),
-                StudentService.LeaderboardEntry(5, "Liam", 60, 1)
-            )
+            android.util.Log.e("LeaderboardScreen", "Error fetching leaderboard", e)
         }
         isLoading = false
     }
@@ -143,7 +166,37 @@ fun LeaderboardScreen(navController: NavController, username: String = "") {
                         CircularProgressIndicator()
                     }
                 }
-            } else if (leaderboard.isEmpty()) {
+            } else if (classLeaderboard.isEmpty() && !isEnrolled) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("👨‍🏫", fontSize = 48.sp)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Not Enrolled Yet",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Please enroll to your teacher first before you can see the class leaderboards",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            } else if (classLeaderboard.isEmpty() && isEnrolled) {
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -165,7 +218,7 @@ fun LeaderboardScreen(navController: NavController, username: String = "") {
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Be the first to start learning!",
+                                text = "No classmates yet. Be the first to start learning!",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                                 textAlign = TextAlign.Center
@@ -174,7 +227,7 @@ fun LeaderboardScreen(navController: NavController, username: String = "") {
                     }
                 }
             } else {
-                itemsIndexed(leaderboard) { index, entry ->
+                itemsIndexed(classLeaderboard) { index, entry ->
                     run {
                         val cardIs = MutableInteractionSource()
                         val pressed by cardIs.collectIsPressedAsState()

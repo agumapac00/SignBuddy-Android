@@ -6,6 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.TrendingUp
@@ -55,7 +56,18 @@ fun TeacherReportsScreen(navController: NavController? = null, teacherId: String
         colors = listOf(Color(0xFFE3F2FD), Color(0xFFFFF3E0), Color(0xFFF3E5F5))
     )
     
-    Scaffold(topBar = { TopAppBar(title = { Text("AI Reports & Insights") }) }) { inner ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("AI Reports & Insights") },
+                navigationIcon = {
+                    IconButton(onClick = { navController?.popBackStack() }) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { inner ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -155,28 +167,6 @@ fun TeacherReportsScreen(navController: NavController? = null, teacherId: String
             // AI Insights Section
             if (classStats != null && studentReports != null) {
                 AIInsightsSection(classStats!!, studentReports!!)
-            }
-            
-            // Action buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Button(
-                    onClick = { /* Export reports */ },
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("📤 Export Reports")
-                }
-                
-                Button(
-                    onClick = { navController?.popBackStack() },
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Back")
-                }
             }
         }
     }

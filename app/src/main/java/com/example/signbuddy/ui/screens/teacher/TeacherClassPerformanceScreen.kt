@@ -6,6 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Speed
@@ -55,7 +56,18 @@ fun TeacherClassPerformanceScreen(navController: NavController? = null, teacherI
         colors = listOf(Color(0xFFFFF7AE), Color(0xFFFFE5C2), Color(0xFFE1F5FE))
     )
     
-    Scaffold(topBar = { TopAppBar(title = { Text("Class Performance") }) }) { inner ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Class Performance") },
+                navigationIcon = {
+                    IconButton(onClick = { navController?.popBackStack() }) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { inner ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -147,8 +159,12 @@ fun TeacherClassPerformanceScreen(navController: NavController? = null, teacherI
                             horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
                             StatCard(
-                                title = "Avg Speed",
-                                value = "${classStats!!.averageSpeed}s",
+                                title = "Avg Progress Rate",
+                                value = if (classStats!!.averageSpeed > 0) {
+                                    String.format("%.2f", classStats!!.averageSpeed)
+                                } else {
+                                    "0.0"
+                                },
                                 icon = Icons.Filled.Speed,
                                 color = Color(0xFFFF9800)
                             )
@@ -293,7 +309,7 @@ fun TeacherClassPerformanceScreen(navController: NavController? = null, teacherI
                                     fontWeight = FontWeight.Medium
                                 )
                                 Text(
-                                    text = "${avgSpeed}s avg",
+                                    text = "%.2f letters/session".format(avgSpeed),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color(0xFFFF9800)
                                 )
@@ -304,40 +320,21 @@ fun TeacherClassPerformanceScreen(navController: NavController? = null, teacherI
                 }
             }
             
-            // Action buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            // Celebration button only
+            val celebrateIs = MutableInteractionSource()
+            val celebratePressed by celebrateIs.collectIsPressedAsState()
+            val celebrateScale by animateFloatAsState(targetValue = if (celebratePressed) 0.96f else 1f, label = "celebrateScale")
+            
+            Button(
+                onClick = { showConfetti = true },
+                shape = RoundedCornerShape(10.dp),
+                interactionSource = celebrateIs,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer(scaleX = celebrateScale, scaleY = celebrateScale),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6B6B))
             ) {
-                val celebrateIs = MutableInteractionSource()
-                val celebratePressed by celebrateIs.collectIsPressedAsState()
-                val celebrateScale by animateFloatAsState(targetValue = if (celebratePressed) 0.96f else 1f, label = "celebrateScale")
-                
-                Button(
-                    onClick = { showConfetti = true },
-                    shape = RoundedCornerShape(10.dp),
-                    interactionSource = celebrateIs,
-                    modifier = Modifier
-                        .weight(1f)
-                        .graphicsLayer(scaleX = celebrateScale, scaleY = celebrateScale)
-                ) {
-                    Text("🎉 Celebrate Improvements")
-                }
-
-                val backIs = MutableInteractionSource()
-                val backPressed by backIs.collectIsPressedAsState()
-                val backScale by animateFloatAsState(targetValue = if (backPressed) 0.96f else 1f, label = "backScalePerf")
-                
-                Button(
-                    onClick = { navController?.popBackStack() },
-                    shape = RoundedCornerShape(10.dp),
-                    interactionSource = backIs,
-                    modifier = Modifier
-                        .weight(1f)
-                        .graphicsLayer(scaleX = backScale, scaleY = backScale)
-                ) {
-                    Text("Back")
-                }
+                Text("🎉 Celebrate Improvements", color = Color.White, fontWeight = FontWeight.Bold)
             }
             
             com.example.signbuddy.ui.screens.teacher.components.ConfettiOverlay(visible = showConfetti) { showConfetti = false }

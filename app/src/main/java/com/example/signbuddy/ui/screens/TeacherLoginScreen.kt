@@ -45,7 +45,7 @@ fun TeacherLoginScreen(
     navController: NavController,
     authViewModel: AuthViewModel? = null
 ) {
-    var teacherUsername by remember { mutableStateOf("") }
+    var teacherEmail by remember { mutableStateOf("") }
     var teacherPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf(false) }
@@ -160,10 +160,10 @@ fun TeacherLoginScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedTextField(
-                value = teacherUsername,
-                onValueChange = { if (it.length <= 20) teacherUsername = it },
-                label = { Text("Teacher Username 👩‍🏫") },
-                placeholder = { Text("Enter your username...") },
+                value = teacherEmail,
+                onValueChange = { teacherEmail = it },
+                label = { Text("Teacher Email 📧") },
+                placeholder = { Text("Enter your email...") },
                 leadingIcon = { Icon(imageVector = Icons.Filled.Person, contentDescription = null) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -243,20 +243,20 @@ fun TeacherLoginScreen(
                 )
                 Button(
                     onClick = { 
-                        if (teacherUsername.isBlank() || teacherPassword.isBlank()) {
+                        if (teacherEmail.isBlank() || teacherPassword.isBlank()) {
                             showError = true
-                            errorMessage = "Please enter both username and password"
+                            errorMessage = "Please enter both email and password"
                         } else {
                             if (authViewModel != null) {
                                 // Use Firebase authentication
-                                authViewModel.signIn(teacherUsername, teacherPassword)
+                                authViewModel.signIn(teacherEmail, teacherPassword)
                             } else {
                                 // Fallback to simple validation for demo
-                                if (teacherUsername == "teacher" && teacherPassword == "password") {
+                                if (teacherEmail == "teacher" && teacherPassword == "password") {
                                     navController.navigate("teacher/dashboard")
                                 } else {
                                     showError = true
-                                    errorMessage = "Invalid username or password"
+                                    errorMessage = "Invalid email or password"
                                 }
                             }
                         }

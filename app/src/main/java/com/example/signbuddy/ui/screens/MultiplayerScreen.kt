@@ -556,40 +556,31 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
         val questionStartTime = questionIndex * 10000L // Approximate question start time
         val actualResponseTime = responseTime - questionStartTime
         
-        // Letter-based scoring: 10 points per letter signed
-        val scoreGained = 10
-        
-        // Force score update by always adding points
-        Log.d("MultiplayerScreen", "FORCE SCORING: Adding $scoreGained points for letter '$answer'")
-        
         Log.d("MultiplayerScreen", "=== LETTER SIGNING ===")
         Log.d("MultiplayerScreen", "Player: ${multiplayerGameState.localPlayerName}")
         Log.d("MultiplayerScreen", "Question: ${currentQuestion?.content}")
         Log.d("MultiplayerScreen", "Letter Signed: '$answer'")
-        Log.d("MultiplayerScreen", "Score Gained: $scoreGained points")
         Log.d("MultiplayerScreen", "Response Time: $actualResponseTime ms")
         Log.d("MultiplayerScreen", "Score Before: ${localPlayer.score}")
-        Log.d("MultiplayerScreen", "Score After: ${localPlayer.score + scoreGained}")
         
-        // Update local player state
-        val oldScore = localPlayer.score
+        // Update local player state WITHOUT adding score (ViewModel will do that)
         localPlayer = localPlayer.copy(
             currentAnswer = answer,
             isCorrect = true, // Always true for letter signing
             responseTime = actualResponseTime,
-            score = localPlayer.score + scoreGained,
             totalCorrectAnswers = localPlayer.totalCorrectAnswers + 1
+            // NOTE: score will be updated by ViewModel after sync
         )
         
-        Log.d("MultiplayerScreen", "Score updated: $oldScore -> ${localPlayer.score} (+$scoreGained)")
+        Log.d("MultiplayerScreen", "Score will be updated by ViewModel after sync")
         
-        // Submit answer to ViewModel for synchronization
+        // Submit answer to ViewModel for synchronization and score calculation
         multiplayerViewModel?.submitAnswer(answer, true, actualResponseTime)
         
         // Play success sound and haptic feedback
         soundEffects.playCorrect()
         hapticFeedback.successPattern()
-        Log.d("MultiplayerScreen", "🎉 LETTER '$answer' SIGNED! +$scoreGained points earned!")
+        Log.d("MultiplayerScreen", "🎉 LETTER '$answer' SIGNED!")
     }
     
     // Note: Opponent responses are now handled through ViewModel message listening

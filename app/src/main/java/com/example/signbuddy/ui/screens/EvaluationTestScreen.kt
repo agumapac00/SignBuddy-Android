@@ -146,6 +146,7 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
     // Load model off the UI thread and store interpreter in state
     var modelInterpreter by remember { mutableStateOf<Interpreter?>(null) }
     var handSignAnalyzer by remember { mutableStateOf<EvaluationHandSignAnalyzer?>(null) }
+    var shouldStopAnalysis by remember { mutableStateOf(false) }
     
     LaunchedEffect(Unit) {
         // Loads model on IO dispatcher
@@ -155,6 +156,7 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
     // Cleanup analyzer when composable is disposed
     DisposableEffect(Unit) {
         onDispose {
+            shouldStopAnalysis = true
             handSignAnalyzer?.cleanup()
         }
     }
@@ -177,6 +179,44 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
         if (showFeedback) {
             delay(1500)
             showFeedback = false
+        }
+    }
+
+    // Save progress immediately when evaluation completes (before user clicks Done)
+    LaunchedEffect(showEndDialog) {
+        if (showEndDialog && username.isNotEmpty()) {
+            // Save progress immediately so it persists even if user closes app
+            android.util.Log.d("EvaluationTestScreen", "=== AUTO-SAVING PROGRESS ===")
+            android.util.Log.d("EvaluationTestScreen", "Correct count: $correctCount")
+            android.util.Log.d("EvaluationTestScreen", "Letters completed: $correctCount")
+            
+            try {
+                val sessionResult = ProgressTrackingService.SessionResult(
+                    mode = "evaluation",
+                    accuracy = if (initialTotalAttempts > 0) {
+                        (correctCount.toFloat() / initialTotalAttempts.toFloat()).coerceAtMost(1.0f)
+                    } else 0f,
+                    timeSpent = if (sessionStartTime > 0) {
+                        (System.currentTimeMillis() - sessionStartTime) / 1000
+                    } else 0,
+                    lettersCompleted = correctCount,
+                    perfectSigns = correctCount,
+                    mistakes = wrongCount,
+                    actualScore = score // Pass the actual score earned in evaluation
+                )
+                
+                android.util.Log.d("EvaluationTestScreen", "Calling updateProgress with actualScore=$score, lettersCompleted=$correctCount")
+                val result = progressTrackingService.updateProgress(username, sessionResult)
+                result.onSuccess { update ->
+                    android.util.Log.d("EvaluationTestScreen", "✅ Progress saved successfully!")
+                    android.util.Log.d("EvaluationTestScreen", "Achievements unlocked: ${update.achievementsUnlocked}")
+                    progressUpdate = update
+                }.onFailure { error ->
+                    android.util.Log.e("EvaluationTestScreen", "❌ Failed to save progress", error)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("EvaluationTestScreen", "Exception during progress save", e)
+            }
         }
     }
 
@@ -261,6 +301,7 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
             inputSize = inputSize,
             useFrontCamera = useFrontCamera,
             context = context,
+            shouldStop = { shouldStopAnalysis },
             onPrediction = { prediction: String ->
                 // update UI states based on prediction; only act on non-empty string
                 currentPrediction = prediction
@@ -337,7 +378,10 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
                         animationSpec = tween(100),
                         label = "backEval"
                     )
-                    IconButton(onClick = { navController?.popBackStack() }, interactionSource = backIs, modifier = Modifier.graphicsLayer(scaleX = backScale, scaleY = backScale)) {
+                    IconButton(onClick = { 
+                        shouldStopAnalysis = true
+                        navController?.popBackStack() 
+                    }, interactionSource = backIs, modifier = Modifier.graphicsLayer(scaleX = backScale, scaleY = backScale)) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -878,32 +922,10 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
                     confirmButton = {
                         TextButton(onClick = {
                             showEndDialog = false
-                            // Track progress when evaluation is completed
-                            if (username.isNotEmpty()) {
-                                scope.launch {
-                                    android.util.Log.d("EvaluationTestScreen", "=== EVALUATION COMPLETE ===")
-                                    android.util.Log.d("EvaluationTestScreen", "Correct count: $correctCount")
-                                    android.util.Log.d("EvaluationTestScreen", "Letters completed: $correctCount")
-                                    android.util.Log.d("EvaluationTestScreen", "Total attempts: $initialTotalAttempts")
-                                    android.util.Log.d("EvaluationTestScreen", "Accuracy: ${correctCount.toFloat() / initialTotalAttempts.toFloat()}")
-                                    
-                                    val sessionResult = ProgressTrackingService.SessionResult(
-                                        mode = "evaluation",
-                                        accuracy = (correctCount.toFloat() / initialTotalAttempts.toFloat()).coerceAtMost(1.0f),
-                                        timeSpent = (System.currentTimeMillis() - sessionStartTime) / 1000,
-                                        lettersCompleted = correctCount,
-                                        perfectSigns = correctCount,
-                                        mistakes = wrongCount
-                                    )
-                                    
-                                    android.util.Log.d("EvaluationTestScreen", "Calling updateProgress with lettersCompleted=$correctCount")
-                                    progressTrackingService.updateProgress(username, sessionResult)
-                                        .onSuccess { update ->
-                                            progressUpdate = update
-                                            showProgressDialog = true
-                                        }
-                                        .onFailure { /* Handle error */ }
-                                }
+                            // Progress already auto-saved when session ended
+                            // Just show progress dialog if we have updates
+                            if (progressUpdate != null) {
+                                showProgressDialog = true
                             }
                             // reset session to allow replay
                             isPracticing = false
@@ -954,6 +976,7 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
                         TextButton(
                             onClick = { 
                                 showProgressDialog = false
+                                shouldStopAnalysis = true
                                 navController?.popBackStack()
                             }
                         ) {
@@ -1016,6 +1039,7 @@ class EvaluationHandSignAnalyzer(
     private val inputSize: Int,
     private val useFrontCamera: Boolean,
     private val context: Context,
+    private val shouldStop: () -> Boolean,
     private val onPrediction: (String) -> Unit
 ) : ImageAnalysis.Analyzer {
     private val handler = Handler(Looper.getMainLooper())
@@ -1044,21 +1068,24 @@ class EvaluationHandSignAnalyzer(
     private val interpreterLock = Any()
 
     override fun analyze(image: ImageProxy) {
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - lastAnalysisTime < analysisInterval) {
-            image.close()
-            return
-        }
-        lastAnalysisTime = currentTime
-
-        if (modelInterpreter == null) {
-            Log.e(TAG, "Model interpreter is null")
-            image.close()
-            handler.post { onPrediction("") }
-            return
-        }
-
         try {
+            // Check if we should stop analysis
+            if (shouldStop()) {
+                image.close()
+                return
+            }
+            
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastAnalysisTime < analysisInterval) {
+                return
+            }
+            lastAnalysisTime = currentTime
+
+            if (modelInterpreter == null) {
+                Log.e(TAG, "Model interpreter is null")
+                handler.post { onPrediction("") }
+                return
+            }
             // Handle rotation and flip for front camera
             val rotationDegrees = if (useFrontCamera) 270 else 0
             var bitmap = image.toBitmap(rotationDegrees)
@@ -1087,18 +1114,26 @@ class EvaluationHandSignAnalyzer(
             // Run inference (output shape expected [1, numFeatures, numDetections])
             // Use synchronized block to prevent concurrent access
             var inferenceSucceeded = false
-            synchronized(interpreterLock) {
-                try {
-                    modelInterpreter.run(inputBuffer, outputArray3D)
-                    inferenceSucceeded = true
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error during model inference", e)
-                    handler.post { onPrediction("") }
+            
+            // Check again before running expensive inference
+            if (!shouldStop()) {
+                synchronized(interpreterLock) {
+                    // Double-check after acquiring lock
+                    if (!shouldStop()) {
+                        try {
+                            modelInterpreter.run(inputBuffer, outputArray3D)
+                            inferenceSucceeded = true
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error during model inference", e)
+                            handler.post { onPrediction("") }
+                        }
+                    }
                 }
             }
             
-            // If inference failed, exit early
-            if (!inferenceSucceeded) {
+            // If inference failed or we should stop, exit early
+            if (!inferenceSucceeded || shouldStop()) {
+                handler.post { onPrediction("") }
                 return
             }
 
@@ -1145,7 +1180,6 @@ class EvaluationHandSignAnalyzer(
             }
 
             if (boundingBoxes.isEmpty()) {
-                handler.post { onPrediction("") }
                 return
             }
 

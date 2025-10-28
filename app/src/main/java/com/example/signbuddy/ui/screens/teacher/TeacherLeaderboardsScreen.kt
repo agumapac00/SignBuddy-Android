@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
@@ -39,9 +41,15 @@ fun TeacherLeaderboardsScreen(navController: NavController? = null, authViewMode
         topBar = {
             TopAppBar(
                 title = { Text("🏆 Class Leaderboards", style = MaterialTheme.typography.titleLarge) },
+                navigationIcon = {
+                    IconButton(onClick = { navController?.popBackStack() }) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = Color.White
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
                 )
             )
         }
@@ -57,14 +65,21 @@ fun TeacherLeaderboardsScreen(navController: NavController? = null, authViewMode
         LaunchedEffect(Unit) {
             if (authViewModel != null) {
                 val teacherInfo = authViewModel.getCurrentTeacherInfo()
+                android.util.Log.d("TeacherLeaderboardsScreen", "Teacher info: $teacherInfo")
                 teacherInfo?.let { info ->
                     teacherId = info["uid"] as? String ?: ""
+                    android.util.Log.d("TeacherLeaderboardsScreen", "Teacher ID: $teacherId")
                     
                     if (teacherId.isNotEmpty()) {
                         try {
+                            android.util.Log.d("TeacherLeaderboardsScreen", "Fetching leaderboard for teacher: $teacherId")
                             leaderboardEntries = teacherService.getClassLeaderboard(teacherId, 10)
+                            android.util.Log.d("TeacherLeaderboardsScreen", "Got ${leaderboardEntries.size} leaderboard entries")
+                            leaderboardEntries.forEachIndexed { index, entry ->
+                                android.util.Log.d("TeacherLeaderboardsScreen", "Entry $index: ${entry.studentName} - Score: ${entry.score}")
+                            }
                         } catch (e: Exception) {
-                            // Handle error - keep empty list
+                            android.util.Log.e("TeacherLeaderboardsScreen", "Error fetching leaderboard", e)
                         }
                         isLoading = false
                     }
@@ -233,47 +248,25 @@ fun TeacherLeaderboardsScreen(navController: NavController? = null, authViewMode
                     }
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+            
+            // Celebrate button only
             val celebrateIs = MutableInteractionSource()
             val celebratePressed by celebrateIs.collectIsPressedAsState()
             val celebrateScale by animateFloatAsState(targetValue = if (celebratePressed) 0.96f else 1f, label = "celebrateLb")
-                Button(
-                    onClick = { showConfetti = true },
-                    shape = RoundedCornerShape(16.dp),
-                    interactionSource = celebrateIs,
-                    modifier = Modifier
-                        .weight(1f)
-                        .graphicsLayer(scaleX = celebrateScale, scaleY = celebrateScale),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6B6B))
-                ) {
-                    Text(
-                        text = "🎉 Celebrate Winners",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-            val backIs = MutableInteractionSource()
-            val backPressed by backIs.collectIsPressedAsState()
-            val backScale by animateFloatAsState(targetValue = if (backPressed) 0.96f else 1f, label = "backLb")
-                Button(
-                    onClick = { navController?.popBackStack() },
-                    shape = RoundedCornerShape(16.dp),
-                    interactionSource = backIs,
-                    modifier = Modifier
-                        .weight(1f)
-                        .graphicsLayer(scaleX = backScale, scaleY = backScale),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6C63FF))
-                ) {
-                    Text(
-                        text = "⬅️ Back",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+            Button(
+                onClick = { showConfetti = true },
+                shape = RoundedCornerShape(16.dp),
+                interactionSource = celebrateIs,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer(scaleX = celebrateScale, scaleY = celebrateScale),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6B6B))
+            ) {
+                Text(
+                    text = "🎉 Celebrate Winners",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
             }
             com.example.signbuddy.ui.screens.teacher.components.ConfettiOverlay(visible = showConfetti) { showConfetti = false }
         }

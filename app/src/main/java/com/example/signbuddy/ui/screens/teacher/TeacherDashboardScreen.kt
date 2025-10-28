@@ -24,11 +24,13 @@ import androidx.compose.ui.text.font.FontWeight
 import com.example.signbuddy.ui.components.*
 import com.example.signbuddy.viewmodels.AuthViewModel
 import com.example.signbuddy.services.TeacherService
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: AuthViewModel? = null) {
+    val auth = FirebaseAuth.getInstance()
     val gradient = Brush.verticalGradient(
         colors = listOf(
             Color(0xFFFFE0B2), // Warm orange
@@ -66,7 +68,18 @@ fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: 
     
     // Fetch teacher info and class statistics when screen loads
     LaunchedEffect(Unit) {
+        // Check if user is logged in
+        val currentUser = auth.currentUser
+        if (currentUser == null && authViewModel != null) {
+            // User is not logged in, navigate to login
+            navController?.navigate("teacherLogin") {
+                popUpTo(0) { inclusive = true }
+            }
+            return@LaunchedEffect
+        }
+        
         if (authViewModel != null) {
+            try {
             val teacherInfo = authViewModel.getCurrentTeacherInfo()
             teacherInfo?.let { info ->
                 teacherName = info["displayName"] as? String ?: "Teacher"
@@ -82,6 +95,9 @@ fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: 
                     }
                     isLoadingStats = false
                 }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("TeacherDashboard", "Error getting teacher info", e)
             }
         }
     }
@@ -90,21 +106,6 @@ fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: 
         topBar = {
             TopAppBar(
                 title = { Text("👩‍🏫 Teacher Dashboard", style = MaterialTheme.typography.titleLarge) },
-                actions = {
-                    IconButton(
-                        onClick = {
-                            soundEffects.playButtonClick()
-                            hapticFeedback.lightTap()
-                            showLogoutDialog = true
-                        }
-                    ) {
-                        Icon(
-                            Icons.Default.ExitToApp,
-                            contentDescription = "Logout",
-                            tint = Color.White
-                        )
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     titleContentColor = Color.White,
@@ -540,25 +541,37 @@ fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: 
                     }
                 }
 
-                // ENHANCED DASHBOARD CARD
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                // LOGOUT BUTTON
+                val logoutIs = MutableInteractionSource()
+                val logoutPressed by logoutIs.collectIsPressedAsState()
+                val logoutScale by animateFloatAsState(targetValue = if (logoutPressed) 0.96f else 1f, label = "logoutScale")
+                
+                Button(
+                    onClick = {
+                        soundEffects.playButtonClick()
+                        hapticFeedback.lightTap()
+                        showLogoutDialog = true
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer(scaleX = logoutScale, scaleY = logoutScale),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
+                    interactionSource = logoutIs
                     ) {
                         Icon(
-                            Icons.Filled.Dashboard,
+                        Icons.Default.ExitToApp,
                             contentDescription = null,
-                            tint = Color(0xFF6C63FF),
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "🚪 Logout",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
                 }
             }
         }
@@ -574,7 +587,8 @@ fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: 
                 TextButton(
                     onClick = {
                         showLogoutDialog = false
-                        navController?.navigate("login") {
+                        authViewModel?.signOut()
+                        navController?.navigate("teacherLogin") {
                             popUpTo(0) { inclusive = true }
                         }
                     }

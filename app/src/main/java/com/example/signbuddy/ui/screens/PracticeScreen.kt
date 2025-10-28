@@ -124,6 +124,7 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
     // Load model off the UI thread and store interpreter in state
     var modelInterpreter by remember { mutableStateOf<Interpreter?>(null) }
     var handSignAnalyzer by remember { mutableStateOf<HandSignAnalyzer?>(null) }
+    var shouldStopAnalysis by remember { mutableStateOf(false) }
     
     LaunchedEffect(Unit) {
         // Loads model on IO dispatcher
@@ -133,6 +134,7 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
     // Cleanup analyzer when composable is disposed
     DisposableEffect(Unit) {
         onDispose {
+            shouldStopAnalysis = true
             handSignAnalyzer?.cleanup()
         }
     }
@@ -248,6 +250,7 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
             inputSize = inputSize,
             useFrontCamera = useFrontCamera,
             context = context,
+            shouldStop = { shouldStopAnalysis },
             onPrediction = { prediction: String ->
                 // update UI states based on prediction; guard while feedback is visible
                 currentPrediction = prediction
@@ -284,7 +287,10 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
             TopAppBar(
                 title = { Text("🤟 Practice Mode", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
-                    IconButton(onClick = { navController?.popBackStack() }) {
+                    IconButton(onClick = { 
+                        shouldStopAnalysis = true
+                        navController?.popBackStack() 
+                    }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -740,6 +746,7 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
                     dismissButton = {
                         TextButton(onClick = {
                             showBadgeDialog = false
+                            shouldStopAnalysis = true
                             navController?.popBackStack()
                         }) {
                             Text("Back to Menu")
@@ -778,6 +785,7 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
                         TextButton(
                             onClick = { 
                                 showProgressDialog = false
+                                shouldStopAnalysis = true
                                 navController?.popBackStack()
                             }
                         ) {
@@ -878,6 +886,7 @@ class HandSignAnalyzer(
     private val inputSize: Int,
     private val useFrontCamera: Boolean,
     private val context: Context,
+    private val shouldStop: () -> Boolean,
     private val onPrediction: (String) -> Unit
 ) : ImageAnalysis.Analyzer {
     private val handler = Handler(Looper.getMainLooper())
@@ -906,21 +915,23 @@ class HandSignAnalyzer(
     private val interpreterLock = Any()
 
     override fun analyze(image: ImageProxy) {
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - lastAnalysisTime < analysisInterval) {
-            image.close()
-            return
-        }
-        lastAnalysisTime = currentTime
-
-        if (modelInterpreter == null) {
-            Log.e(TAG, "Model interpreter is null")
-            image.close()
-            handler.post { onPrediction("") }
-            return
-        }
-
         try {
+            // Check if we should stop analysis
+            if (shouldStop()) {
+                return
+            }
+            
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastAnalysisTime < analysisInterval) {
+                return
+            }
+            lastAnalysisTime = currentTime
+
+            if (modelInterpreter == null) {
+                Log.e(TAG, "Model interpreter is null")
+                handler.post { onPrediction("") }
+                return
+            }
             // Handle rotation and flip for front camera
             val rotationDegrees = if (useFrontCamera) 270 else 0
             var bitmap = image.toBitmap(rotationDegrees)
@@ -976,14 +987,28 @@ class HandSignAnalyzer(
 
             // Run inference (output shape expected [1, numFeatures, numDetections])
             // Use synchronized block to prevent concurrent access
-            synchronized(interpreterLock) {
-                try {
-                    modelInterpreter.run(inputBuffer, outputArray3D)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error during model inference", e)
-                    handler.post { onPrediction("") }
-                    return
+            var inferenceSucceeded = false
+            
+            // Check again before running expensive inference
+            if (!shouldStop()) {
+                synchronized(interpreterLock) {
+                    // Double-check after acquiring lock
+                    if (!shouldStop()) {
+                        try {
+                            modelInterpreter.run(inputBuffer, outputArray3D)
+                            inferenceSucceeded = true
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error during model inference", e)
+                            handler.post { onPrediction("") }
+                        }
+                    }
                 }
+            }
+            
+            // If inference failed or we should stop, exit early
+            if (!inferenceSucceeded || shouldStop()) {
+                handler.post { onPrediction("") }
+                return
             }
 
             // Flatten output for processing
@@ -1029,7 +1054,6 @@ class HandSignAnalyzer(
             }
 
             if (boundingBoxes.isEmpty()) {
-                handler.post { onPrediction("") }
                 return
             }
 
