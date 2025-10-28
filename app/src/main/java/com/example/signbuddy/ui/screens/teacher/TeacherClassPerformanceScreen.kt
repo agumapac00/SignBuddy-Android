@@ -321,15 +321,15 @@ fun TeacherClassPerformanceScreen(navController: NavController? = null, teacherI
             }
             
             // Celebration button only
-            val celebrateIs = MutableInteractionSource()
-            val celebratePressed by celebrateIs.collectIsPressedAsState()
-            val celebrateScale by animateFloatAsState(targetValue = if (celebratePressed) 0.96f else 1f, label = "celebrateScale")
-            
-            Button(
-                onClick = { showConfetti = true },
-                shape = RoundedCornerShape(10.dp),
-                interactionSource = celebrateIs,
-                modifier = Modifier
+                val celebrateIs = MutableInteractionSource()
+                val celebratePressed by celebrateIs.collectIsPressedAsState()
+                val celebrateScale by animateFloatAsState(targetValue = if (celebratePressed) 0.96f else 1f, label = "celebrateScale")
+                
+                Button(
+                    onClick = { showConfetti = true },
+                    shape = RoundedCornerShape(10.dp),
+                    interactionSource = celebrateIs,
+                    modifier = Modifier
                     .fillMaxWidth()
                     .graphicsLayer(scaleX = celebrateScale, scaleY = celebrateScale),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6B6B))

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "337159004743",
+    "project_id": "signbuddy-b0ba6",
+    "storage_bucket": "signbuddy-b0ba6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:337159004743:android:2471ff8bfb135d1f114762",
+        "android_client_info": {
+          "package_name": "com.example.signbuddy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCfhiZFOzD44GnaXQF9-9AljCxRn05rFmI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

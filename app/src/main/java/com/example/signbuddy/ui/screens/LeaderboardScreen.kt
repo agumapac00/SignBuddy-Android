@@ -60,44 +60,179 @@ fun LeaderboardScreen(navController: NavController, username: String = "") {
     val studentService = remember { StudentService() }
     val teacherService = remember { com.example.signbuddy.services.TeacherService() }
     val scope = rememberCoroutineScope()
-    
+
     // Fetch student's enrollment status and class leaderboard
     LaunchedEffect(username) {
         try {
             if (username.isNotEmpty()) {
                 android.util.Log.d("LeaderboardScreen", "Fetching leaderboard for username: $username")
-                
+
                 // Get student profile from Firestore to check teacherId
-                val studentSnapshot = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                val firestore = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+
+                // Try 1: exact username as provided from navigation
+                var studentSnapshot = firestore
                     .collection("studentProfiles")
                     .whereEqualTo("username", username)
                     .limit(1)
                     .get()
                     .await()
-                
+
+                // Try 2: normalized (spaces to underscores)
+                if (studentSnapshot.isEmpty) {
+                    val normalized = username.replace(" ", "_")
+                    android.util.Log.d("LeaderboardScreen", "Retry with normalized username: $normalized")
+                    studentSnapshot = firestore
+                        .collection("studentProfiles")
+                        .whereEqualTo("username", normalized)
+                        .limit(1)
+                        .get()
+                        .await()
+                }
+
+                // Try 3: lowercased normalized
+                if (studentSnapshot.isEmpty) {
+                    val lower = username.trim().replace(" ", "_").lowercase()
+                    android.util.Log.d("LeaderboardScreen", "Retry with lowercased username: $lower")
+                    studentSnapshot = firestore
+                        .collection("studentProfiles")
+                        .whereEqualTo("username", lower)
+                        .limit(1)
+                        .get()
+                        .await()
+                }
+
                 android.util.Log.d("LeaderboardScreen", "Student snapshot size: ${studentSnapshot.size()}")
-                
+
                 if (!studentSnapshot.isEmpty) {
-                    val student = studentSnapshot.documents.first().toObject(com.example.signbuddy.data.StudentProfile::class.java)
+                    val doc = studentSnapshot.documents.first()
+                    val data = doc.data
+                    android.util.Log.d("LeaderboardScreen", "Student document data: $data")
+
+                    // Try multiple ways to get teacherId
+                    val teacherIdFromDoc = doc.getString("teacherId")
+                    android.util.Log.d("LeaderboardScreen", "teacherId from document.get: $teacherIdFromDoc")
+
+                    val teacherIdFromData = data?.get("teacherId") as? String
+                    android.util.Log.d("LeaderboardScreen", "teacherId from data map: $teacherIdFromData")
+
+                    val student = doc.toObject(com.example.signbuddy.data.StudentProfile::class.java)
                     android.util.Log.d("LeaderboardScreen", "Student profile: $student")
-                    student?.let {
-                        teacherId = it.teacherId
-                        isEnrolled = !it.teacherId.isNullOrEmpty()
-                        
-                        android.util.Log.d("LeaderboardScreen", "teacherId: $teacherId, isEnrolled: $isEnrolled")
-                        
-                        // If enrolled, fetch class leaderboard
-                        if (isEnrolled && teacherId != null) {
-                            android.util.Log.d("LeaderboardScreen", "Fetching class leaderboard for teacherId: $teacherId")
+                    android.util.Log.d("LeaderboardScreen", "Student teacherId field: ${student?.teacherId}")
+
+                    // Get teacherId from any source
+                    val finalTeacherId = teacherIdFromDoc ?: teacherIdFromData ?: student?.teacherId
+                    teacherId = finalTeacherId
+                    isEnrolled = !finalTeacherId.isNullOrEmpty()
+
+                    android.util.Log.d("LeaderboardScreen", "Final teacherId: $teacherId, isEnrolled: $isEnrolled")
+
+                    // If enrolled, fetch class leaderboard
+                    if (isEnrolled && teacherId != null) {
+                        android.util.Log.d("LeaderboardScreen", "Fetching class leaderboard for teacherId: $teacherId")
+                        try {
                             classLeaderboard = teacherService.getClassLeaderboard(teacherId!!, 20)
                             android.util.Log.d("LeaderboardScreen", "Class leaderboard entries: ${classLeaderboard.size}")
                             classLeaderboard.forEachIndexed { index, entry ->
                                 android.util.Log.d("LeaderboardScreen", "Entry $index: ${entry.studentName} - ${entry.score}")
                             }
+                        } catch (e: Exception) {
+                            android.util.Log.e("LeaderboardScreen", "Error fetching leaderboard", e)
+                            e.printStackTrace()
+                        }
+                    } else {
+                        android.util.Log.d("LeaderboardScreen", "Not enrolled - teacherId is null or empty. Trying uid fallback...")
+                        // Fallback: resolve via users -> uid -> studentProfiles by uid
+                        val usersSnapshot = firestore
+                            .collection("users")
+                            .whereEqualTo("username", username)
+                            .limit(1)
+                            .get()
+                            .await()
+                        if (!usersSnapshot.isEmpty) {
+                            val uid = usersSnapshot.documents.first().getString("uid")
+                            android.util.Log.d("LeaderboardScreen", "Found uid for username $username: $uid")
+                            if (!uid.isNullOrEmpty()) {
+                                val spSnapshot = firestore
+                                    .collection("studentProfiles")
+                                    .whereEqualTo("uid", uid)
+                                    .limit(1)
+                                    .get()
+                                    .await()
+                                if (!spSnapshot.isEmpty) {
+                                    val spDoc = spSnapshot.documents.first()
+                                    val tid = spDoc.getString("teacherId")
+                                    android.util.Log.d("LeaderboardScreen", "teacherId via uid fallback: $tid")
+                                    if (!tid.isNullOrEmpty()) {
+                                        teacherId = tid
+                                        isEnrolled = true
+                                        try {
+                                            classLeaderboard = teacherService.getClassLeaderboard(tid, 20)
+                                            android.util.Log.d("LeaderboardScreen", "Class leaderboard entries (fallback): ${classLeaderboard.size}")
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("LeaderboardScreen", "Error fetching leaderboard via fallback", e)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 } else {
-                    android.util.Log.w("LeaderboardScreen", "No student found with username: $username")
+                    android.util.Log.w("LeaderboardScreen", "No student found with username: $username - attempting uid path directly")
+                    // Final fallback: resolve uid in users, then fetch studentProfiles/{uid}
+                    val usersSnapshot = firestore
+                        .collection("users")
+                        .whereEqualTo("username", username)
+                        .limit(1)
+                        .get()
+                        .await()
+                    if (!usersSnapshot.isEmpty) {
+                        val uid = usersSnapshot.documents.first().getString("uid")
+                        if (!uid.isNullOrEmpty()) {
+                            val spDoc = firestore.collection("studentProfiles").document(uid).get().await()
+                            if (spDoc.exists()) {
+                                val tid = spDoc.getString("teacherId")
+                                android.util.Log.d("LeaderboardScreen", "teacherId via direct uid doc: $tid")
+                                if (!tid.isNullOrEmpty()) {
+                                    teacherId = tid
+                                    isEnrolled = true
+                                    classLeaderboard = teacherService.getClassLeaderboard(tid, 20)
+                                }
+                            }
+                        }
+                    }
+
+                    // Variant scan: try to find any profile with username variant that has a non-null teacherId
+                    if (!isEnrolled) {
+                        val variants = listOf(
+                            username,
+                            username.replace(" ", "_"),
+                            username.trim().replace(" ", "_").lowercase()
+                        ).distinct()
+                        for (variant in variants) {
+                            val vSnap = firestore
+                                .collection("studentProfiles")
+                                .whereEqualTo("username", variant)
+                                .limit(1)
+                                .get()
+                                .await()
+                            if (!vSnap.isEmpty) {
+                                val vTid = vSnap.documents.first().getString("teacherId")
+                                android.util.Log.d("LeaderboardScreen", "Variant '$variant' teacherId: $vTid")
+                                if (!vTid.isNullOrEmpty()) {
+                                    teacherId = vTid
+                                    isEnrolled = true
+                                    try {
+                                        classLeaderboard = teacherService.getClassLeaderboard(vTid, 20)
+                                        android.util.Log.d("LeaderboardScreen", "Loaded leaderboard via variant teacherId")
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("LeaderboardScreen", "Error loading leaderboard via variant", e)
+                                    }
+                                    break
+                                }
+                            }
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -142,20 +277,20 @@ fun LeaderboardScreen(navController: NavController, username: String = "") {
                         color = MaterialTheme.colorScheme.primary,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
-                    
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     Text(
                         text = "See who's doing great with their sign language!",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
-                    
+
                     Spacer(modifier = Modifier.height(24.dp))
                 }
             }
-            
+
             // Leaderboard entries
             if (isLoading) {
                 item {
@@ -188,7 +323,7 @@ fun LeaderboardScreen(navController: NavController, username: String = "") {
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Please enroll to your teacher first before you can see the class leaderboards",
+                                text = "Please ask your teacher to enroll you. Go to 'My Students' → 'Add Student' in the teacher dashboard.",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                                 textAlign = TextAlign.Center
@@ -223,10 +358,20 @@ fun LeaderboardScreen(navController: NavController, username: String = "") {
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                                 textAlign = TextAlign.Center
                             )
+                            // Debug info
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Debug: classLeaderboard.isNotEmpty() = ${!classLeaderboard.isEmpty()}",
+                                fontSize = 10.sp,
+                                color = Color.Red
+                            )
                         }
                     }
                 }
-            } else {
+            }
+
+            // Show leaderboard entries if they exist
+            if (classLeaderboard.isNotEmpty()) {
                 itemsIndexed(classLeaderboard) { index, entry ->
                     run {
                         val cardIs = MutableInteractionSource()
