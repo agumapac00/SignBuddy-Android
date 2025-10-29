@@ -32,6 +32,18 @@ class ProgressTrackingService {
      * Calculate XP and score based on session results
      */
     fun calculateProgress(sessionResult: SessionResult): ProgressUpdate {
+        // Special rule: In multiplayer, if the player earned zero actual score,
+        // award zero XP and zero score to avoid misleading rewards
+        if (sessionResult.mode == "multiplayer" && sessionResult.actualScore <= 0) {
+            return ProgressUpdate(
+                xpGained = 0,
+                scoreGained = 0,
+                achievementsUnlocked = emptyList(),
+                levelUp = false,
+                newLevel = null
+            )
+        }
+
         val baseXP = when (sessionResult.mode) {
             "tutorial" -> 10
             "practice" -> 15
