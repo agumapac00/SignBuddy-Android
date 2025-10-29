@@ -164,8 +164,10 @@ fun ProfileScreen(username: String, navController: androidx.navigation.NavContro
                 ) {
                     Text("📈", fontSize = 24.sp)
                     Spacer(modifier = Modifier.height(4.dp))
+                    // Updated percentage logic: use lettersLearned/26 * 100
+                    val progressPercent = if (isLoading) null else ((studentStats?.lettersLearned?.toFloat() ?: 0f) / 26f * 100).coerceAtMost(100f).toInt()
                     Text(
-                        text = if (isLoading) "..." else "${((studentStats?.averageAccuracy ?: 0f) * 100).toInt()}%",
+                        text = progressPercent?.let { "$it%" } ?: "...",
                         style = MaterialTheme.typography.headlineMedium,
                         color = Color.White,
                         fontWeight = FontWeight.Bold
@@ -220,7 +222,9 @@ fun ProfileScreen(username: String, navController: androidx.navigation.NavContro
 
         ProfileCard("Level", if (isLoading) "Loading..." else "Level ${studentStats?.level ?: 1} ⭐⭐⭐", Icons.Default.Star, MaterialTheme.colorScheme.secondary)
 
-        ProgressCard(if (isLoading) 0f else studentStats?.averageAccuracy ?: 0f)
+        // Updated ProgressCard and logic: (lettersLearned / 26) for the float progress, max 1f
+        val overallProgress = if (isLoading) 0f else (studentStats?.lettersLearned?.toFloat() ?: 0f) / 26f
+        ProgressCard(overallProgress.coerceAtMost(1f))
 
         AchievementsCard(achievements)
 

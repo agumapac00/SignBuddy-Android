@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,6 +20,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.example.signbuddy.services.StudentService
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProgressScreen(navController: NavHostController, username: String) {
     val gradientBackground = Brush.verticalGradient(
@@ -85,18 +88,36 @@ fun ProgressScreen(navController: NavHostController, username: String) {
         }
     }
     
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(gradientBackground)
-    ) {
-        Column(
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("📈 Progress", style = MaterialTheme.typography.titleLarge) },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
+                )
+            )
+        }
+    ) { innerPadding ->
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .background(gradientBackground)
+                .padding(innerPadding)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             // Header
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -288,6 +309,7 @@ fun ProgressScreen(navController: NavHostController, username: String) {
                         )
                     }
                 }
+            }
             }
         }
     }
