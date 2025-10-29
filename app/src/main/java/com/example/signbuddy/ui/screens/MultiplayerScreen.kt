@@ -607,6 +607,9 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
                     IconButton(onClick = { 
                         soundEffects.playButtonClick()
                         hapticFeedback.lightTap()
+                        // Close match and disconnect both devices
+                        multiplayerViewModel?.leaveRoom()
+                        // Navigate back to main multiplayer screen
                         navController?.popBackStack() 
                     }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")

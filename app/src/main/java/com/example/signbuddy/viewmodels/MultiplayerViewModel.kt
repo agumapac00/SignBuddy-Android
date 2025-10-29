@@ -47,6 +47,10 @@ data class MultiplayerGameState(
 
 class MultiplayerViewModel : ViewModel() {
     private val multiplayerService = MultiplayerService()
+    // Track awarded letters per question to prevent duplicate scoring
+    private var lastQuestionIndex: Int = -1
+    private val localAwardedLetters: MutableSet<String> = mutableSetOf()
+    private val opponentAwardedLetters: MutableSet<String> = mutableSetOf()
     
     private val _gameState = MutableStateFlow(MultiplayerGameState())
     val gameState: StateFlow<MultiplayerGameState> = _gameState.asStateFlow()
@@ -66,14 +70,12 @@ class MultiplayerViewModel : ViewModel() {
             _isLoading.value = true
             _errorMessage.value = null
             val roomCode = generateRoomCode()
-            val hostId = UUID.randomUUID().toString()
 
-            // Immediately update UI state to show room code
+            // Immediately update UI state to show room code (defer localPlayerId until room is created)
             _gameState.update {
                 it.copy(
                     isHost = true,
                     roomCode = roomCode,
-                    localPlayerId = hostId,
                     localPlayerName = playerName,
                     isConnected = true,
                     isWaitingForOpponent = true
@@ -83,8 +85,10 @@ class MultiplayerViewModel : ViewModel() {
 
             multiplayerService.createRoomWithCode(roomCode, playerName)
                 .onSuccess { room ->
-                    Log.d("MultiplayerViewModel", "Room created successfully: $roomCode")
+                    Log.d("MultiplayerViewModel", "Room created successfully: $roomCode (hostId=${room.hostId})")
                     _room.value = room
+                    // Ensure localPlayerId matches the room's hostId so opponent filtering works
+                    _gameState.update { it.copy(localPlayerId = room.hostId) }
                     listenToRoom(roomCode)
                 }
                 .onFailure { e ->
@@ -149,6 +153,14 @@ class MultiplayerViewModel : ViewModel() {
                             currentQuestionIndex = room.currentQuestion,
                             gameFinished = room.gameState == "FINISHED"
                         )
+                    }
+
+                    // Reset awarded letters when question changes
+                    if (room.currentQuestion != lastQuestionIndex) {
+                        lastQuestionIndex = room.currentQuestion
+                        localAwardedLetters.clear()
+                        opponentAwardedLetters.clear()
+                        Log.d("MultiplayerViewModel", "Question changed to index ${room.currentQuestion}. Cleared awarded letters.")
                     }
                     
                     // Update opponent info
@@ -234,7 +246,10 @@ class MultiplayerViewModel : ViewModel() {
                         Log.d("MultiplayerViewModel", "Is from opponent: $isFromOpponent")
                         
                         if (isFromOpponent) {
-                            val scoreGained = calculateScore(answerData.isCorrect, answerData.responseTime)
+                            val normalized = answerData.answer.trim().uppercase()
+                            val alreadyAwarded = opponentAwardedLetters.contains(normalized)
+                            if (!alreadyAwarded) opponentAwardedLetters.add(normalized)
+                            val scoreGained = if (alreadyAwarded) 0 else calculateScore(answerData.isCorrect, answerData.responseTime)
                             Log.d("MultiplayerViewModel", "Calculated score gain: $scoreGained")
                             
                             _gameState.update { currentState ->
@@ -344,6 +359,10 @@ class MultiplayerViewModel : ViewModel() {
                 if (_gameState.value.isHost) {
                     multiplayerService.startGame(roomCode)
                 }
+                // Reset per-question tracking at game start
+                lastQuestionIndex = -1
+                localAwardedLetters.clear()
+                opponentAwardedLetters.clear()
             }
         }
     }
@@ -361,8 +380,11 @@ class MultiplayerViewModel : ViewModel() {
                 // Send answer to other players for real-time sync
                 multiplayerService.submitAnswer(roomCode, playerId, playerName, answer, isCorrect, responseTime)
                 
-                // Calculate score (10 points per letter)
-                val scoreGained = calculateScore(isCorrect, responseTime)
+                // Calculate score (10 points per letter) only once per unique letter per question
+                val normalized = answer.trim().uppercase()
+                val alreadyAwarded = localAwardedLetters.contains(normalized)
+                if (!alreadyAwarded) localAwardedLetters.add(normalized)
+                val scoreGained = if (alreadyAwarded) 0 else calculateScore(isCorrect, responseTime)
                 
                 // Update local state immediately
                 _gameState.update { currentState ->
@@ -403,6 +425,9 @@ class MultiplayerViewModel : ViewModel() {
             // Reset state
             _gameState.update { MultiplayerGameState() }
             _room.value = null
+            lastQuestionIndex = -1
+            localAwardedLetters.clear()
+            opponentAwardedLetters.clear()
         }
     }
     
