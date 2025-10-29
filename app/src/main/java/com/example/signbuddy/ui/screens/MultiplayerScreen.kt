@@ -232,6 +232,9 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
     var mistakes by remember { mutableStateOf(0) }
     var showProgressDialog by remember { mutableStateOf(false) }
     var progressUpdate by remember { mutableStateOf<ProgressTrackingService.ProgressUpdate?>(null) }
+    var hasShownExitSummary by remember { mutableStateOf(false) }
+    var hasShownResultsOnce by remember { mutableStateOf(false) }
+    var isExitHandled by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     
     // Sync ViewModel state with local state
@@ -337,6 +340,15 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
     var modelInterpreter by remember { mutableStateOf<Interpreter?>(null) }
     var handSignAnalyzer by remember { mutableStateOf<MultiplayerHandSignAnalyzer?>(null) }
     
+    // Reset one-time flags when entering screen
+    LaunchedEffect(Unit) {
+        hasShownExitSummary = false
+        hasShownResultsOnce = false
+        isExitHandled = false
+        showProgressDialog = false
+        progressUpdate = null
+    }
+    
     // Ensure both players have the same question type
     LaunchedEffect(multiplayerGameState.roomCode) {
         if (multiplayerGameState.roomCode.isNotEmpty()) {
@@ -412,13 +424,20 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
     // Note: Camera setup is handled in CameraPreview component
     
     // Game questions
-    val letterQuestions = listOf(
-        GameQuestion("L1", QuestionType.LETTER, "A", "A", 10),
-        GameQuestion("L2", QuestionType.LETTER, "B", "B", 10),
-        GameQuestion("L3", QuestionType.LETTER, "C", "C", 10),
-        GameQuestion("L4", QuestionType.LETTER, "D", "D", 10),
-        GameQuestion("L5", QuestionType.LETTER, "E", "E", 10)
-    )
+    var gameSeed by remember { mutableStateOf(0) }
+    val letterQuestions = remember(selectedQuestionType, gameSeed) {
+        // Generate 10 unique random letters A-Z for this session
+        val letters = ('A'..'Z').shuffled().take(10)
+        letters.mapIndexed { index, ch ->
+            GameQuestion(
+                id = "L${index + 1}",
+                type = QuestionType.LETTER,
+                content = ch.toString(),
+                answer = ch.toString(),
+                timeLimit = 10
+            )
+        }
+    }
     
     val wordQuestions = listOf(
         GameQuestion("W1", QuestionType.WORD, "CAT", "C-A-T", 15),
@@ -563,24 +582,39 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
         Log.d("MultiplayerScreen", "Response Time: $actualResponseTime ms")
         Log.d("MultiplayerScreen", "Score Before: ${localPlayer.score}")
         
+        val isCorrect = answer.equals(question.answer, ignoreCase = true)
+
         // Update local player state WITHOUT adding score (ViewModel will do that)
         localPlayer = localPlayer.copy(
             currentAnswer = answer,
-            isCorrect = true, // Always true for letter signing
+            isCorrect = isCorrect,
             responseTime = actualResponseTime,
-            totalCorrectAnswers = localPlayer.totalCorrectAnswers + 1
-            // NOTE: score will be updated by ViewModel after sync
+            totalCorrectAnswers = if (isCorrect) localPlayer.totalCorrectAnswers + 1 else localPlayer.totalCorrectAnswers
         )
-        
+
+        // Track session stats for summary
+        if (isCorrect) {
+            perfectSigns += 1
+        } else {
+            mistakes += 1
+        }
+        lettersCompleted += 1
+
         Log.d("MultiplayerScreen", "Score will be updated by ViewModel after sync")
-        
+
         // Submit answer to ViewModel for synchronization and score calculation
-        multiplayerViewModel?.submitAnswer(answer, true, actualResponseTime)
-        
-        // Play success sound and haptic feedback
-        soundEffects.playCorrect()
-        hapticFeedback.successPattern()
-        Log.d("MultiplayerScreen", "🎉 LETTER '$answer' SIGNED!")
+        multiplayerViewModel?.submitAnswer(answer, isCorrect, actualResponseTime)
+
+        // Play audio and haptics based on correctness
+        if (isCorrect) {
+            soundEffects.playCorrect()
+            hapticFeedback.successPattern()
+            Log.d("MultiplayerScreen", "✅ Correct: '$answer'")
+        } else {
+            incorrectToneGenerator.startTone(ToneGenerator.TONE_SUP_ERROR, 150)
+            hapticFeedback.lightTap()
+            Log.d("MultiplayerScreen", "❌ Incorrect: '$answer', expected '${question.answer}'")
+        }
     }
     
     // Note: Opponent responses are now handled through ViewModel message listening
@@ -588,15 +622,26 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
     // Removed auto-advance - players must manually proceed to next question
     
     fun resetGame() {
-        gameState = GameState.LOBBY
         questionIndex = 0
         currentQuestion = null
         timeLeft = 0
         localPlayer = localPlayer.copy(score = 0, currentAnswer = "", isCorrect = false)
         opponentPlayer = opponentPlayer.copy(score = 0, currentAnswer = "", isCorrect = false)
+        lettersCompleted = 0
+        perfectSigns = 0
+        mistakes = 0
+        // Regenerate questions for a fresh session
+        gameSeed += 1
         
         // Clear opponent answer in ViewModel
         multiplayerViewModel?.clearOpponentAnswer()
+    }
+
+    fun restartMultiplayerGame() {
+        resetGame()
+        // Clear finished flag and scores in ViewModel, then start countdown
+        multiplayerViewModel?.restartGameForBothPlayers()
+        gameState = GameState.COUNTDOWN
     }
 
     Scaffold(
@@ -607,9 +652,29 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
                     IconButton(onClick = { 
                         soundEffects.playButtonClick()
                         hapticFeedback.lightTap()
-                        // End game for both players and transition to results locally
-                        multiplayerViewModel?.endGameForBothPlayers()
-                        // Do not navigate yet; show results and progress dialog first
+                        // If we're in lobby or not connected, go back to lessons screen
+                        if (gameState == GameState.LOBBY || !(multiplayerGameState?.isConnected ?: false)) {
+                            navController?.navigate("studentDashboard/$username") {
+                                popUpTo("studentDashboard/{username}") { inclusive = false }
+                                launchSingleTop = true
+                            }
+                        } else {
+                            // Otherwise, terminate the session immediately and return to lessons (with bottom nav)
+                            if (!isExitHandled) {
+                                isExitHandled = true
+                                showProgressDialog = false
+                                progressUpdate = null
+                                hasShownExitSummary = false
+                                hasShownResultsOnce = false
+                                gameState = GameState.LOBBY
+                                resetGame()
+                                multiplayerViewModel?.leaveRoom()
+                                navController?.navigate("studentDashboard/$username") {
+                                    popUpTo("studentDashboard/{username}") { inclusive = false }
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
                     }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
@@ -705,8 +770,17 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
                 GameState.FINISHED -> FinalResultsScreen(
                     localPlayer = localPlayer,
                     opponentPlayer = opponentPlayer,
-                    onPlayAgain = { resetGame() },
-                    onBackToLobby = { gameState = GameState.LOBBY },
+                    onPlayAgain = { restartMultiplayerGame() },
+                    onBackToLobby = {
+                        // Leave the room and go back to multiplayer lobby view
+                        multiplayerViewModel?.leaveRoom()
+                        resetGame()
+                        gameState = GameState.LOBBY
+                        // Reset flags so summary won't reappear spuriously
+                        hasShownExitSummary = false
+                        hasShownResultsOnce = false
+                        isExitHandled = false
+                    },
                     username = username,
                     progressTrackingService = progressTrackingService,
                     scope = scope,
@@ -715,8 +789,11 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
                     mistakes = mistakes,
                     sessionStartTime = sessionStartTime,
                     onProgressUpdate = { update ->
-                        progressUpdate = update
-                        showProgressDialog = true
+                        if (!hasShownExitSummary) {
+                            progressUpdate = update
+                            showProgressDialog = true
+                            hasShownExitSummary = true
+                        }
                     }
                 )
             }
@@ -752,10 +829,13 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            // Close dialog, terminate the match session, and return to lobby (stay in multiplayer screen)
+                            // Close dialog and show results once
                             showProgressDialog = false
-                            multiplayerViewModel?.leaveRoom()
-                            gameState = GameState.LOBBY
+                            progressUpdate = null
+                            if (!hasShownResultsOnce) {
+                                gameState = GameState.FINISHED
+                                hasShownResultsOnce = true
+                            }
                         }
                     ) {
                         Text("Continue")
@@ -1779,28 +1859,15 @@ fun FinalResultsScreen(
             }
         }
         
-        // Action buttons
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        // Single continue button to return to main multiplayer screen
+        Button(
+            onClick = onBackToLobby,
+            modifier = Modifier
+                .fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+            shape = RoundedCornerShape(12.dp)
         ) {
-            Button(
-                onClick = onPlayAgain,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Play Again", color = Color.White)
-            }
-            
-            Button(
-                onClick = onBackToLobby,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Back to Lobby", color = Color.White)
-            }
+            Text("Continue", color = Color.White)
         }
     }
 }

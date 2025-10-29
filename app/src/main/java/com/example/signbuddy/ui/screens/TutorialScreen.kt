@@ -147,7 +147,12 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
             TopAppBar(
                 title = { Text("📚 Tutorial: A–Z Signs", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
-                    IconButton(onClick = { navController?.popBackStack() }) {
+                    IconButton(onClick = { 
+                        navController?.navigate("studentDashboard/$username") {
+                            popUpTo("studentDashboard/{username}") { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },

@@ -86,6 +86,11 @@ class TeacherService {
         val averageAccuracy = if (students.isNotEmpty()) {
             students.map { it.averageAccuracy }.average().toFloat()
         } else 0f
+
+        // Calculate average progress (letters learned out of 26)
+        val averageProgress = if (students.isNotEmpty()) {
+            students.map { s -> (s.lettersLearned.toFloat() / 26f).coerceIn(0f, 1f) }.average().toFloat()
+        } else 0f
         
         // Calculate average completion rate based on letters learned and practice sessions
         // This represents how quickly students are progressing through the alphabet
@@ -261,7 +266,7 @@ class TeacherService {
         }
         
         val averageProgress = if (students.isNotEmpty()) {
-            students.map { it.averageAccuracy }.average().toFloat()
+            students.map { s -> (s.lettersLearned.toFloat() / 26f).coerceIn(0f, 1f) }.average().toFloat()
         } else 0f
         
         val totalSessions = students.sumOf { it.practiceSessions }
@@ -295,7 +300,7 @@ class TeacherService {
                 StudentPerformance(
                     studentId = it.uid,
                     studentName = it.displayName,
-                    progress = (it.averageAccuracy * 100).toInt(),
+                    progress = ((it.lettersLearned.toFloat() / 26f) * 100f).toInt().coerceIn(0, 100),
                     isActive = isActive,
                     lastActive = it.lastActive,
                     totalScore = it.totalScore,

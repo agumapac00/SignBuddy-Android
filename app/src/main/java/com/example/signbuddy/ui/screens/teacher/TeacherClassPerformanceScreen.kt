@@ -59,12 +59,17 @@ fun TeacherClassPerformanceScreen(navController: NavController? = null, teacherI
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Class Performance") },
+                title = { Text("Class Performance", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = { navController?.popBackStack() }) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
+                )
             )
         }
     ) { inner ->

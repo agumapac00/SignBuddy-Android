@@ -63,7 +63,7 @@ fun TeacherStudentsScreen(navController: NavController? = null, authViewModel: A
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("My Students") },
+                title = { Text("My Students", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = { navController?.popBackStack() }) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
@@ -73,7 +73,13 @@ fun TeacherStudentsScreen(navController: NavController? = null, authViewModel: A
                     IconButton(onClick = { navController?.navigate("teacher/students/add") }) {
                         Icon(Icons.Filled.Add, contentDescription = "Add Student")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White
+                )
             )
         }
     ) { innerPadding ->

@@ -289,7 +289,10 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
                 navigationIcon = {
                     IconButton(onClick = { 
                         shouldStopAnalysis = true
-                        navController?.popBackStack() 
+                        navController?.navigate("studentDashboard/$username") {
+                            popUpTo("studentDashboard/{username}") { inclusive = false }
+                            launchSingleTop = true
+                        }
                     }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }

@@ -367,6 +367,34 @@ class MultiplayerViewModel : ViewModel() {
         }
     }
 
+    fun restartGameForBothPlayers() {
+        viewModelScope.launch {
+            val roomCode = _gameState.value.roomCode
+            if (roomCode.isNotEmpty()) {
+                // Reset scores and flags locally
+                _gameState.update {
+                    it.copy(
+                        localPlayerScore = 0,
+                        opponentPlayerScore = 0,
+                        gameFinished = false,
+                        gameStarted = false,
+                        currentQuestionIndex = 0,
+                        currentQuestionContent = "",
+                        currentQuestionAnswer = "",
+                        opponentCurrentAnswer = "",
+                        opponentIsCorrect = false
+                    )
+                }
+                // Clear trackers
+                lastQuestionIndex = -1
+                localAwardedLetters.clear()
+                opponentAwardedLetters.clear()
+                // Start game
+                startGameForBothPlayers()
+            }
+        }
+    }
+
     fun endGameForBothPlayers() {
         viewModelScope.launch {
             val roomCode = _gameState.value.roomCode
@@ -416,12 +444,10 @@ class MultiplayerViewModel : ViewModel() {
     }
     
     private fun calculateScore(isCorrect: Boolean, responseTime: Long, timeLimit: Int = 10): Int {
-        // Letter-based scoring: 10 points per letter signed
-        // No need to check isCorrect since all letter signing gives points
-        val letterScore = 10
-        
-        Log.d("MultiplayerViewModel", "Letter-based scoring: $letterScore points per letter")
-        return letterScore
+        if (!isCorrect) return 0
+        val points = 10
+        Log.d("MultiplayerViewModel", "Scoring: isCorrect=$isCorrect → $points")
+        return points
     }
     
     fun leaveRoom() {

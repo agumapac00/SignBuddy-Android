@@ -380,7 +380,10 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
                     )
                     IconButton(onClick = { 
                         shouldStopAnalysis = true
-                        navController?.popBackStack() 
+                        navController?.navigate("studentDashboard/$username") {
+                            popUpTo("studentDashboard/{username}") { inclusive = false }
+                            launchSingleTop = true
+                        }
                     }, interactionSource = backIs, modifier = Modifier.graphicsLayer(scaleX = backScale, scaleY = backScale)) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
