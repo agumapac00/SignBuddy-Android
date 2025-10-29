@@ -191,8 +191,8 @@ fun SignBuddyUsernameScreen(navController: NavController) {
                                                 .onFailure { error ->
                                                     android.util.Log.e("SignBuddyUsernameScreen", "Failed to update login streak", error)
                                                 }
-                                            // Student found, navigate to dashboard
-                                            navController.navigate("studentDashboard/${studentProfile.username}")
+                                            // Student found, navigate to dashboard (Home tab)
+                                            navController.navigate("studentDashboard/${studentProfile.username}?tab=0")
                                         } else {
                                             showError = true
                                             errorMessage = "Username not found. Please register first."

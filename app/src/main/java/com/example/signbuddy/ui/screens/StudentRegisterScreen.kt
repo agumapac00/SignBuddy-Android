@@ -246,7 +246,7 @@ fun StudentRegisterScreen(
                                                     // Show success message briefly, then navigate
                                                     scope.launch {
                                                         delay(1500) // Show success message for 1.5 seconds
-                                                        navController.navigate("studentDashboard/$registeredUsername") {
+                                                        navController.navigate("studentDashboard/$registeredUsername?tab=0") {
                                                             popUpTo(0) { inclusive = true }
                                                         }
                                                     }

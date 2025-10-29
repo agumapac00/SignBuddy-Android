@@ -23,7 +23,7 @@ import com.example.signbuddy.ui.screens.StudentRegisterScreen
 import com.example.signbuddy.ui.screens.TeacherLoginScreen
 import com.example.signbuddy.ui.screens.TeacherRegisterScreen
 import com.example.signbuddy.ui.screens.teacher.TeacherDashboardScreen
-import com.example.signbuddy.ui.dashboard.StudentDashboard
+import com.example.signbuddy.ui.components.StudentTabsScaffold
 import com.example.signbuddy.viewmodels.AuthViewModel
 import com.example.signbuddy.viewmodels.MultiplayerViewModel
 import com.example.signbuddy.ui.screens.AchievementsScreen
@@ -140,15 +140,15 @@ class MainActivity : ComponentActivity() {
 
                         // Student dashboard (with username argument)
                         composable(
-                            route = "studentDashboard/{username}",
-                            arguments = listOf(navArgument("username") { type = NavType.StringType })
-                        ) { backStackEntry ->
-                            val username =
-                                backStackEntry.arguments?.getString("username") ?: "Student"
-                            StudentDashboard(
-                                navController = navController,
-                                username = username
+                            route = "studentDashboard/{username}?tab={tab}",
+                            arguments = listOf(
+                                navArgument("username") { type = NavType.StringType },
+                                navArgument("tab") { type = NavType.IntType; defaultValue = 1 }
                             )
+                        ) { backStackEntry ->
+                            val username = backStackEntry.arguments?.getString("username") ?: "Student"
+                            val tab = backStackEntry.arguments?.getInt("tab") ?: 1
+                            StudentTabsScaffold(navController = navController, username = username, defaultTab = tab)
                         }
 
                         // Progress
