@@ -607,10 +607,9 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
                     IconButton(onClick = { 
                         soundEffects.playButtonClick()
                         hapticFeedback.lightTap()
-                        // Close match and disconnect both devices
-                        multiplayerViewModel?.leaveRoom()
-                        // Navigate back to main multiplayer screen
-                        navController?.popBackStack() 
+                        // End game for both players and transition to results locally
+                        multiplayerViewModel?.endGameForBothPlayers()
+                        // Do not navigate yet; show results and progress dialog first
                     }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
@@ -752,9 +751,11 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
                 },
                 confirmButton = {
                     TextButton(
-                        onClick = { 
+                        onClick = {
+                            // Close dialog, terminate the match session, and return to lobby (stay in multiplayer screen)
                             showProgressDialog = false
-                            navController?.popBackStack()
+                            multiplayerViewModel?.leaveRoom()
+                            gameState = GameState.LOBBY
                         }
                     ) {
                         Text("Continue")
@@ -1508,16 +1509,7 @@ fun PlayingScreen(
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 // Test scoring mechanism (temporary for debugging)
-                Button(
-                    onClick = {
-                        Log.d("MultiplayerScreen", "TEST: Manual score button clicked")
-                        onAnswerSubmit("TEST")
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("TEST SCORE (+10)", color = Color.White)
-                }
+                
                 
             }
         }
@@ -1718,7 +1710,8 @@ fun FinalResultsScreen(
                     timeSpent = if (sessionStartTime > 0) (System.currentTimeMillis() - sessionStartTime) / 1000 else 0,
                     lettersCompleted = lettersCompleted,
                     perfectSigns = perfectSigns,
-                    mistakes = mistakes
+                    mistakes = mistakes,
+                    actualScore = localPlayer.score
                 )
                 
                 progressTrackingService.updateProgress(username, sessionResult)

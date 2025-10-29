@@ -56,10 +56,10 @@ class ProgressTrackingService {
         
         val xpGained = (baseXP * accuracyMultiplier * timeMultiplier).toInt()
         
-        // For evaluation mode, use the actual score earned
-        // For other modes, calculate based on performance
-        val scoreGained = if (sessionResult.mode == "evaluation" && sessionResult.actualScore > 0) {
-            sessionResult.actualScore // Use the actual score earned in evaluation
+        // If actualScore is provided (> 0), use it directly to avoid mismatches
+        // This applies to multiplayer and any mode that reports actual in-game score
+        val scoreGained = if (sessionResult.actualScore > 0) {
+            sessionResult.actualScore
         } else {
             (xpGained * 10) + (sessionResult.perfectSigns * 5) - (sessionResult.mistakes * 2)
         }

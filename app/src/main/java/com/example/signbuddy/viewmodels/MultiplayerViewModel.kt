@@ -366,6 +366,18 @@ class MultiplayerViewModel : ViewModel() {
             }
         }
     }
+
+    fun endGameForBothPlayers() {
+        viewModelScope.launch {
+            val roomCode = _gameState.value.roomCode
+            if (roomCode.isNotEmpty()) {
+                // Send GAME_END to room so both devices transition to finished
+                multiplayerService.endGame(roomCode)
+                // Update local state
+                _gameState.update { it.copy(gameFinished = true, gameStarted = false) }
+            }
+        }
+    }
     
     fun submitAnswer(answer: String, isCorrect: Boolean, responseTime: Long) {
         viewModelScope.launch {
