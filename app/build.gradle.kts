@@ -2,6 +2,7 @@
         alias(libs.plugins.android.application)
         alias(libs.plugins.kotlin.android)
         alias(libs.plugins.kotlin.compose) // ✅ required for Kotlin 2.0+
+        id("com.google.gms.google-services")
     }
 
     android {
@@ -49,6 +50,8 @@
         // Compose Navigation & icons
         implementation("androidx.navigation:navigation-compose:2.8.3")
         implementation("androidx.compose.material:material-icons-extended")
+        // Accompanist Navigation Animation for screen transitions
+        implementation("com.google.accompanist:accompanist-navigation-animation:0.36.0")
 
         // CameraX
         implementation("androidx.camera:camera-camera2:1.5.0")
@@ -63,6 +66,13 @@
 
         implementation("com.google.mediapipe:tasks-vision:0.10.14")
         implementation(libs.androidx.compose.foundation)
+
+        // Firebase
+        implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+        implementation("com.google.firebase:firebase-auth-ktx")
+        implementation("com.google.firebase:firebase-firestore-ktx")
+        implementation("com.google.firebase:firebase-analytics-ktx")
+        implementation("com.google.firebase:firebase-database-ktx")
 
         // Debug
         debugImplementation(libs.androidx.compose.ui.tooling)
