@@ -12,6 +12,7 @@ import android.os.Looper
 import android.util.Log
 import android.util.Size
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -22,10 +23,9 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -110,6 +110,9 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
     val previewView = remember { PreviewView(context) }
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() } // background thread for CameraX analyzers
 
+    // Screen navigation state
+    var showLevelSelection by remember { mutableStateOf(true) }
+    
     // Camera & practice states (same UI as your original)
     var useFrontCamera by remember { mutableStateOf(true) }
     var selectedLevel by remember { mutableStateOf("Easy") }
@@ -229,9 +232,9 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
         }
     }
 
-    // CameraX setup: runs only when permission granted, practicing enabled, and model loaded
-    LaunchedEffect(hasPermission, useFrontCamera, isPracticing, modelInterpreter) {
-        if (!hasPermission || !isPracticing || modelInterpreter == null) return@LaunchedEffect
+    // CameraX setup: runs only when permission granted, practicing enabled, model loaded, and on practice screen
+    LaunchedEffect(hasPermission, useFrontCamera, isPracticing, modelInterpreter, showLevelSelection) {
+        if (!hasPermission || !isPracticing || modelInterpreter == null || showLevelSelection) return@LaunchedEffect
 
         val provider = ProcessCameraProvider.getInstance(context).get()
         val preview = Preview.Builder().build().apply { setSurfaceProvider(previewView.surfaceProvider) }
@@ -287,11 +290,16 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
             TopAppBar(
                 title = { Text("🤟 Practice Mode", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
-                    IconButton(onClick = { 
+                    IconButton(onClick = {
                         shouldStopAnalysis = true
-                        navController?.navigate("studentDashboard/$username") {
-                            popUpTo("studentDashboard/{username}") { inclusive = false }
-                            launchSingleTop = true
+                        showFeedback = false
+                        if (showLevelSelection) {
+                            navController?.navigate("lessons/$username") {
+                                launchSingleTop = true
+                            }
+                        } else {
+                            isPracticing = false
+                            showLevelSelection = true
                         }
                     }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -319,326 +327,50 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
                     onComplete = { showEncouragingMessage = false }
                 )
             }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Header with mascot
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    AnimatedMascot(
-                        isHappy = true,
-                        isCelebrating = false,
-                        size = 60
-                    )
-                    Column {
-                        Text("🤟 Practice Mode", fontSize = 24.sp, fontWeight = SemiBold, color = MaterialTheme.colorScheme.primary)
-                        Text("Let's learn the ABCs in sign language! 🌟", fontSize = 16.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f))
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("The camera will watch your hands and tell you if you're doing the sign correctly! 📸✨", fontSize = 16.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // Score and streak display
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF4CAF50).copy(alpha = 0.1f)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("Score", fontSize = 12.sp, color = Color(0xFF666666))
-                            Text("$score", fontSize = 20.sp, fontWeight = Bold, color = Color(0xFF4CAF50))
+            // Screen 1: Level Selection
+            if (showLevelSelection) {
+                LevelSelectionScreen(
+                    selectedLevel = selectedLevel,
+                    onLevelSelected = { level ->
+                        soundEffects.playButtonClick()
+                        hapticFeedback.lightTap()
+                        selectedLevel = level
+                        score = 0
+                        streak = 0
+                    },
+                    onContinue = {
+                        soundEffects.playButtonClick()
+                        hapticFeedback.lightTap()
+                        showLevelSelection = false
+                        targetLetter = getRandomTarget(selectedLevel)
+                    },
+                    onBackToLessons = {
+                        shouldStopAnalysis = true
+                        navController?.navigate("lessons/$username") {
+                            launchSingleTop = true
                         }
-                    }
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFF9800).copy(alpha = 0.1f)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("Streak", fontSize = 12.sp, color = Color(0xFF666666))
-                            Text("$streak", fontSize = 20.sp, fontWeight = Bold, color = Color(0xFFFF9800))
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                // Enhanced Difficulty buttons
-                Text(
-                    text = "🎯 Choose Your Challenge Level",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
+                    },
+                    gradient = gradient
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    listOf(
-                        Triple("Easy", "🟢", Color(0xFF4CAF50)),
-                        Triple("Average", "🟡", Color(0xFFFF9800)),
-                        Triple("Difficult", "🔴", Color(0xFFF44336))
-                    ).forEach { (lvl, emoji, color) ->
-                        val isSelected = lvl == selectedLevel
-                        Card(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(80.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) color else color.copy(alpha = 0.1f)
-                            ),
-                            elevation = CardDefaults.cardElevation(
-                                defaultElevation = if (isSelected) 8.dp else 4.dp
-                            ),
-                            shape = RoundedCornerShape(16.dp),
-                            onClick = {
-                                soundEffects.playButtonClick()
-                                hapticFeedback.lightTap()
-                                selectedLevel = lvl
-                                score = 0
-                                streak = 0
-                                if (isPracticing) {
-                                    targetLetter = getRandomTarget(lvl)
-                                }
-                            }
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(8.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Text(
-                                    text = emoji,
-                                    fontSize = 24.sp
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = lvl,
-                                    color = if (isSelected) Color.White else color,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                )
-                            }
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                // Enhanced Target card
-                Card(
-                    shape = RoundedCornerShape(20.dp), 
-                    elevation = CardDefaults.cardElevation(8.dp), 
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color.White)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp), 
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "🎯 Your Mission",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Show the sign for",
-                            fontWeight = Medium, 
-                            color = Color(0xFF666666),
-                            fontSize = 16.sp
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        // Enhanced letter display
-                        Box(
-                            modifier = Modifier
-                                .size(120.dp)
-                                .background(
-                                    brush = Brush.radialGradient(
-                                        colors = listOf(
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)
-                                        )
-                                    ),
-                                    shape = RoundedCornerShape(60.dp)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = targetLetter, 
-                                fontSize = 64.sp, 
-                                fontWeight = ExtraBold, 
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        // Enhanced star rating
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "Your Progress",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFF666666)
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            StarRating(
-                                rating = (score / 10).coerceAtMost(5),
-                                maxRating = 5,
-                                size = 28,
-                                animated = true
-                            )
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                // Camera preview + overlay (with guide box and feedback overlay)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(360.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color.Black),
-                    contentAlignment = Alignment.Center
-                ) {
-                    AndroidView(
-                        factory = {
-                            val frame = FrameLayout(context).apply {
-                                addView(previewView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-                                val overlay = OverlayView(context).apply {
-                                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-                                }
-                                addView(overlay)
-                            }
-                            frame
-                        },
-                        modifier = Modifier.matchParentSize()
-                    )
-                    // Feedback overlay with encouraging messages
-                    if (showFeedback) {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Color.Black.copy(alpha = 0.5f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                if (feedbackCorrect) {
-                                    AnimatedMascot(
-                                        isHappy = true,
-                                        isCelebrating = true,
-                                        size = 80
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                }
-                                Text(
-                                    text = if (feedbackCorrect) "✅ Correct!" else "❌ Try again!",
-                                    fontSize = 24.sp,
-                                    color = if (feedbackCorrect) Color.Green else Color.Red,
-                                    fontWeight = Bold
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    "Detected: $currentPrediction",
-                                    fontSize = 16.sp,
-                                    color = Color.White
-                                )
-                            }
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                // Enhanced Controls
-                Text(
-                    text = "🎮 Control Panel",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // Main action buttons
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Skip button
-                    Card(
-                        modifier = Modifier.weight(1f),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFF9800)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        onClick = { 
-                            soundEffects.playButtonClick()
-                            hapticFeedback.lightTap()
-                            targetLetter = getRandomTarget(selectedLevel) 
-                        }
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("⏭️", fontSize = 24.sp)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Skip",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-                    
-                    // Camera switch button
-                    Card(
-                        modifier = Modifier.weight(1f),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF9C27B0)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        onClick = { 
-                            soundEffects.playButtonClick()
-                            hapticFeedback.lightTap()
-                            useFrontCamera = !useFrontCamera 
-                        }
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("📷", fontSize = 24.sp)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = if (useFrontCamera) "Back" else "Front",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                // Start/Stop practice button
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isPracticing) Color(0xFFF44336) else Color(0xFF4CAF50)
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    onClick = {
+            } else {
+                // Screen 2: Practice Interface
+                PracticeInterfaceScreen(
+                    selectedLevel = selectedLevel,
+                    targetLetter = targetLetter,
+                    score = score,
+                    streak = streak,
+                    useFrontCamera = useFrontCamera,
+                    isPracticing = isPracticing,
+                    showFeedback = showFeedback,
+                    feedbackCorrect = feedbackCorrect,
+                    currentPrediction = currentPrediction,
+                    previewView = previewView,
+                    context = context,
+                    soundEffects = soundEffects,
+                    hapticFeedback = hapticFeedback,
+                    onCameraSwitch = { useFrontCamera = !useFrontCamera },
+                    onSkip = { targetLetter = getRandomTarget(selectedLevel) },
+                    onStartStop = {
                         soundEffects.playButtonClick()
                         hapticFeedback.lightTap()
                         isPracticing = !isPracticing
@@ -647,89 +379,21 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
                             score = 0
                             streak = 0
                         }
-                    }
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (isPracticing) "⏹️" else "▶️",
-                            fontSize = 28.sp
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = if (isPracticing) "Stop Practice" else "Start Practice",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // Enhanced Reset and Tips section
-                Row(
-                    modifier = Modifier.fillMaxWidth(), 
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Reset button
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF607D8B)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        onClick = {
-                            soundEffects.playButtonClick()
-                            hapticFeedback.lightTap()
-                            score = 0
-                            streak = 0
-                            targetLetter = getRandomTarget(selectedLevel)
-                            currentPrediction = ""
-                            showFeedback = false
-                            feedbackHandler.removeCallbacks(showFeedbackRunnable)
-                        }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("🔄", fontSize = 16.sp)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Reset",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                    
-                    // Tips card
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("💡", fontSize = 16.sp)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Keep hand centered in camera view",
-                                color = Color(0xFF1976D2),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(40.dp))
+                    },
+                    onReset = {
+                        soundEffects.playButtonClick()
+                        hapticFeedback.lightTap()
+                        score = 0
+                        streak = 0
+                        targetLetter = getRandomTarget(selectedLevel)
+                        currentPrediction = ""
+                        showFeedback = false
+                        feedbackHandler.removeCallbacks(showFeedbackRunnable)
+                    },
+                    gradient = gradient
+                )
             }
+            
             if (showBadgeDialog) {
                 AlertDialog(
                     onDismissRequest = { showBadgeDialog = false },
@@ -851,6 +515,7 @@ private fun loadModelFile(context: Context, modelPath: String): MappedByteBuffer
 }
 
 // Extension: convert ImageProxy to Bitmap with rotation
+@androidx.annotation.OptIn(ExperimentalGetImage::class)
 fun ImageProxy.toBitmap(rotationDegrees: Int): Bitmap {
     val image = this.image ?: return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
     val yBuffer = planes[0].buffer
@@ -1134,6 +799,428 @@ class HandSignAnalyzer(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup", e)
+        }
+    }
+}
+
+// Data class for level options
+data class LevelOption(
+    val level: String,
+    val emoji: String,
+    val color: Color,
+    val description: String
+)
+
+// Screen 1: Level Selection Screen - Compact, fits on one page
+@Composable
+fun LevelSelectionScreen(
+    selectedLevel: String,
+    onLevelSelected: (String) -> Unit,
+    onContinue: () -> Unit,
+    onBackToLessons: () -> Unit,
+    gradient: Brush
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(gradient)
+            .padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Start
+        ) {
+            IconButton(onClick = onBackToLessons) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Back to lessons")
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        // Compact Header
+        AnimatedMascot(
+            isHappy = true,
+            isCelebrating = false,
+            size = 50
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "🤟 Practice Mode",
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Choose your challenge level!",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+        
+        // Compact Level selection cards
+        Text(
+            text = "🎯 Select Difficulty",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(
+                LevelOption("Easy", "🟢", Color(0xFF4CAF50), "Perfect for beginners!"),
+                LevelOption("Average", "🟡", Color(0xFFFF9800), "Ready for a challenge?"),
+                LevelOption("Difficult", "🔴", Color(0xFFF44336), "Master level!")
+            ).forEach { (lvl, emoji, color, description) ->
+                val isSelected = lvl == selectedLevel
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(75.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isSelected) color else color.copy(alpha = 0.1f)
+                    ),
+                    elevation = CardDefaults.cardElevation(
+                        defaultElevation = if (isSelected) 10.dp else 4.dp
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    onClick = { onLevelSelected(lvl) }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(emoji, fontSize = 32.sp)
+                            Column {
+                                Text(
+                                    text = lvl,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = if (isSelected) Color.White else color,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (isSelected) Color.White.copy(alpha = 0.9f) else Color(0xFF666666),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "Selected",
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(20.dp))
+        
+        // Continue button
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            shape = RoundedCornerShape(16.dp),
+            onClick = onContinue
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Continue ➡️",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+// Screen 2: Practice Interface Screen - Compact, fits on one page
+@Composable
+fun PracticeInterfaceScreen(
+    selectedLevel: String,
+    targetLetter: String,
+    score: Int,
+    streak: Int,
+    useFrontCamera: Boolean,
+    isPracticing: Boolean,
+    showFeedback: Boolean,
+    feedbackCorrect: Boolean,
+    currentPrediction: String,
+    previewView: PreviewView,
+    context: Context,
+    soundEffects: com.example.signbuddy.ui.components.SoundEffectsManager,
+    hapticFeedback: com.example.signbuddy.ui.components.HapticFeedbackManager,
+    onCameraSwitch: () -> Unit,
+    onSkip: () -> Unit,
+    onStartStop: () -> Unit,
+    onReset: () -> Unit,
+    gradient: Brush
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(gradient)
+            .padding(10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // Compact Target letter card with Score and Streak on left side
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Score and Streak on left side
+                Column(
+                    horizontalAlignment = Alignment.Start,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    // Score
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Score:", fontSize = 11.sp, color = Color(0xFF666666), fontWeight = Medium)
+                        Text("$score", fontSize = 16.sp, fontWeight = Bold, color = Color(0xFF4CAF50))
+                    }
+                    // Streak
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Streak:", fontSize = 11.sp, color = Color(0xFF666666), fontWeight = Medium)
+                        Text("$streak", fontSize = 16.sp, fontWeight = Bold, color = Color(0xFFFF9800))
+                    }
+                }
+                
+                // Letter display on right side
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "🎯 Show the sign for",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(60.dp)
+                            .background(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                        MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)
+                                    )
+                                ),
+                                shape = RoundedCornerShape(30.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = targetLetter,
+                            fontSize = 36.sp,
+                            fontWeight = ExtraBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+        
+        // Camera preview - larger but still fits one page with controls and reset button
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(340.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            AndroidView(
+                factory = {
+                    val frame = FrameLayout(context).apply {
+                        (previewView.parent as? ViewGroup)?.removeView(previewView)
+                        addView(
+                            previewView,
+                            FrameLayout.LayoutParams(
+                                FrameLayout.LayoutParams.MATCH_PARENT,
+                                FrameLayout.LayoutParams.MATCH_PARENT
+                            )
+                        )
+                        val overlay = OverlayView(context).apply {
+                            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                        }
+                        addView(overlay)
+                    }
+                    frame
+                },
+                modifier = Modifier.matchParentSize()
+            )
+            if (showFeedback) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Black.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (feedbackCorrect) {
+                            AnimatedMascot(
+                                isHappy = true,
+                                isCelebrating = true,
+                                size = 40
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                        }
+                        Text(
+                            text = if (feedbackCorrect) "✅ Correct!" else "❌ Try again!",
+                            fontSize = 16.sp,
+                            color = if (feedbackCorrect) Color.Green else Color.Red,
+                            fontWeight = Bold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            "Detected: $currentPrediction",
+                            fontSize = 11.sp,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+        }
+        
+        // Compact Control buttons
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // Skip
+            Card(
+                modifier = Modifier.weight(1f),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFF9800)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                shape = RoundedCornerShape(10.dp),
+                onClick = onSkip
+            ) {
+                Column(
+                    modifier = Modifier.padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("⏭️  Skip", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            }
+            
+            // Camera switch
+            Card(
+                modifier = Modifier.weight(1f),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF9C27B0)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                shape = RoundedCornerShape(10.dp),
+                onClick = onCameraSwitch
+            ) {
+                Column(
+                    modifier = Modifier.padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = if (useFrontCamera) "📷  Back" else "📷  Front",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                }
+            }
+        }
+        
+        // Start/Stop button
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isPracticing) Color(0xFFF44336) else Color(0xFF4CAF50)
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            shape = RoundedCornerShape(12.dp),
+            onClick = onStartStop
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (isPracticing) "⏹️" else "▶️",
+                    fontSize = 18.sp
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (isPracticing) "Stop Practice" else "Start Practice",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            }
+        }
+        
+        // Reset button
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF607D8B)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+            shape = RoundedCornerShape(10.dp),
+            onClick = onReset
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🔄", fontSize = 16.sp)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "Reset",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            }
         }
     }
 }

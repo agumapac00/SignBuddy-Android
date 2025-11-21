@@ -7,14 +7,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Help
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
@@ -145,7 +143,7 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("📚 Tutorial: A–Z Signs", style = MaterialTheme.typography.titleLarge) },
+                title = { Text("📚 Tutorial: A–Z Signs", style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     IconButton(onClick = { 
                         navController?.navigate("studentDashboard/$username") {
@@ -186,37 +184,35 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
                 .fillMaxSize()
                 .background(gradientBackground)
                 .padding(innerPadding)
-                .padding(20.dp)
-                .verticalScroll(rememberScrollState()),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // 🔹 Enhanced Header with Mascot
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(bottom = 2.dp)
             ) {
                 AnimatedMascot(
                     isHappy = true,
                     isCelebrating = false,
-                    size = 60
+                    size = 48
                 )
                 Column {
                     Text(
-                        text = "📚 Learn the Alphabet! 📚",
-                        style = MaterialTheme.typography.headlineMedium,
+                        text = "📚 Learn the Alphabet!",
+                        style = MaterialTheme.typography.headlineSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = "Let's discover all the letters in sign language! 🌟",
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(20.dp))
 
             // 🔹 Enhanced Image Display with Card
             val currentLetter = letters[index]
@@ -226,19 +222,19 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                shape = RoundedCornerShape(24.dp)
+                shape = RoundedCornerShape(20.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(20.dp),
+                    modifier = Modifier.padding(14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
                         text = "Letter $currentLetter",
-                        style = MaterialTheme.typography.headlineLarge,
+                        style = MaterialTheme.typography.headlineSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     
                     if (imageRes != null) {
                         Image(
@@ -246,33 +242,31 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
                             contentDescription = "Sign for $currentLetter",
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height((300 * scale.value).dp) // Animate size
-                                .clip(RoundedCornerShape(16.dp)),
+                                .height((240 * scale.value).dp) // Animate size
+                                .clip(RoundedCornerShape(12.dp)),
                             contentScale = ContentScale.Fit
                         )
                     }
                     
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Try making this sign with your hands! 🤟",
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
             // 🔹 Progress Indicator
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8)),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(12.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
@@ -291,8 +285,6 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
             // 🔹 Enhanced Controls
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -306,19 +298,22 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
                         if (index > 0) index-- 
                     },
                     enabled = index > 0,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF4ECDC4)
-                    )
+                    ),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text("⬅️ Previous", fontWeight = FontWeight.Bold)
+                    Text("⬅️ Previous", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = if (narrationEnabled) Color(0xFF4CAF50) else Color(0xFFE0E0E0)
                     ),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
                     IconToggleButton(
@@ -330,12 +325,15 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
                         }
                     ) {
                         Icon(
-                            imageVector = if (narrationEnabled) Icons.Default.Mic else Icons.Default.MicOff,
+                            imageVector = if (narrationEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
                             contentDescription = "Narration Toggle",
-                            tint = if (narrationEnabled) Color.White else Color.Gray
+                            tint = if (narrationEnabled) Color.White else Color.Gray,
+                            modifier = Modifier.size(28.dp)
                         )
                     }
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 Button(
                     onClick = {
@@ -399,66 +397,16 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
                             }
                         }
                     },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFFFF6B6B)
-                    )
+                    ),
+                    modifier = Modifier.weight(1f)
                 ) {
                     Text(
                         text = if (index < total - 1) "Next ➡️" else "Finish 🎉",
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 🔹 Additional Action Buttons
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Skip Tutorial Button
-                Button(
-                    onClick = {
-                        soundEffects.playButtonClick()
-                        hapticFeedback.lightTap()
-                        navController?.navigate("studentDashboard/$username") {
-                            popUpTo("tutorial") { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFFF9800)
-                    ),
-                    modifier = Modifier.fillMaxWidth(0.6f)
-                ) {
-                    Text(
-                        text = "⏭️ Skip Tutorial",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                // Second row - Restart Tutorial Button
-                Button(
-                    onClick = {
-                        soundEffects.playButtonClick()
-                        hapticFeedback.lightTap()
-                        index = 0 // Reset to first letter
-                    },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF9C27B0)
-                    ),
-                    modifier = Modifier.fillMaxWidth(0.6f)
-                ) {
-                    Text(
-                        text = "🔄 Restart Tutorial",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
                     )
                 }
             }
