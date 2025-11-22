@@ -131,7 +131,7 @@ fun ProfileScreen(username: String, navController: androidx.navigation.NavContro
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Welcome back, $username!",
+                    text = "Welcome, $username!",
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold
@@ -162,8 +162,7 @@ fun ProfileScreen(username: String, navController: androidx.navigation.NavContro
                     modifier = Modifier.padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("📈", fontSize = 24.sp)
-                    Spacer(modifier = Modifier.height(4.dp))
+
                     // Updated percentage logic: use lettersLearned/26 * 100
                     val progressPercent = if (isLoading) null else ((studentStats?.lettersLearned?.toFloat() ?: 0f) / 26f * 100).coerceAtMost(100f).toInt()
                     Text(
@@ -173,7 +172,7 @@ fun ProfileScreen(username: String, navController: androidx.navigation.NavContro
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Progress",
+                        text = "Progress 📈",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White,
                         fontWeight = FontWeight.Medium
@@ -192,8 +191,7 @@ fun ProfileScreen(username: String, navController: androidx.navigation.NavContro
                     modifier = Modifier.padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("🏆", fontSize = 24.sp)
-                    Spacer(modifier = Modifier.height(4.dp))
+
                     Text(
                         text = "${achievements.count { it.unlocked }}",
                         style = MaterialTheme.typography.headlineMedium,
@@ -201,22 +199,15 @@ fun ProfileScreen(username: String, navController: androidx.navigation.NavContro
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Badges",
+                        text = "Badges 🏆",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White,
                         fontWeight = FontWeight.Medium
+
                     )
                 }
             }
         }
-
-        // Enhanced Profile Cards
-        Text(
-            text = "📊 My Stats",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold
-        )
 
         ProfileCard("Username", username, Icons.Default.Person, MaterialTheme.colorScheme.primary)
 
@@ -225,8 +216,6 @@ fun ProfileScreen(username: String, navController: androidx.navigation.NavContro
         // Updated ProgressCard and logic: (lettersLearned / 26) for the float progress, max 1f
         val overallProgress = if (isLoading) 0f else (studentStats?.lettersLearned?.toFloat() ?: 0f) / 26f
         ProgressCard(overallProgress.coerceAtMost(1f))
-
-        AchievementsCard(achievements)
 
         // Logout Button
         Card(
@@ -301,7 +290,7 @@ fun ProfileCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(120.dp),
+            .height(90.dp),
         colors = CardDefaults.cardColors(containerColor = color),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
         shape = RoundedCornerShape(16.dp)
@@ -315,7 +304,7 @@ fun ProfileCard(
                 imageVector = icon,
                 contentDescription = title,
                 tint = Color.White,
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier.size(40.dp)
             )
             Column {
                 Text(
@@ -341,7 +330,7 @@ fun ProgressCard(progress: Float) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(180.dp),
+            .height(140.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
         shape = RoundedCornerShape(20.dp)
@@ -356,7 +345,7 @@ fun ProgressCard(progress: Float) {
                     progress = progress,
                     strokeWidth = 12.dp,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(120.dp)
+                    modifier = Modifier.size(80.dp)
                 )
                 Text(
                     text = "${(progress * 100).toInt()}%",
@@ -380,92 +369,11 @@ fun ProgressCard(progress: Float) {
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "You're doing amazing! 🌟",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.secondary,
-                    fontWeight = FontWeight.Medium
-                )
+
             }
         }
     }
 }
 
-@Composable
-fun AchievementsCard(
-    achievements: List<com.example.signbuddy.data.Achievement>
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                text = "🏆 My Achievements",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
-            )
 
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(achievements) { achievement ->
-                    Card(
-                        modifier = Modifier.size(160.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (achievement.unlocked) {
-                                Color(0xFF4ECDC4)
-                            } else {
-                                Color(0xFFF5F5F5)
-                            }
-                        ),
-                        elevation = CardDefaults.cardElevation(
-                            defaultElevation = if (achievement.unlocked) 6.dp else 2.dp
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                text = achievement.emoji,
-                                fontSize = 40.sp
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = if (achievement.unlocked) achievement.title else "Locked",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = if (achievement.unlocked) {
-                                    Color.White
-                                } else {
-                                    Color.Gray.copy(alpha = 0.5f)
-                                },
-                                fontWeight = FontWeight.Bold,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                            if (achievement.unlocked) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "✅",
-                                    fontSize = 20.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 

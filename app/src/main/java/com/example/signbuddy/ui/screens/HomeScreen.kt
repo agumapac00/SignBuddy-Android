@@ -33,13 +33,13 @@ fun HomeScreen(navController: NavHostController, username: String) {
             Color(0xFFE3F2FD)  // Light blue
         )
     )
-    
+
     // Real data state - keeping functionality but with original UI
     var studentStats by remember { mutableStateOf<StudentService.StudentStats?>(null) }
     var dayStreak by remember { mutableStateOf(0) }
     var isLoading by remember { mutableStateOf(true) }
     val studentService = remember { StudentService() }
-    
+
     // Fetch student stats and calculate day streak
     LaunchedEffect(username) {
         if (username.isNotEmpty()) {
@@ -101,13 +101,13 @@ fun HomeScreen(navController: NavHostController, username: String) {
             isLoading = false
         }
     }
-    
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(gradientBackground)
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(13.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         // Enhanced Welcome Header
@@ -118,22 +118,16 @@ fun HomeScreen(navController: NavHostController, username: String) {
             shape = RoundedCornerShape(20.dp)
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
+                modifier = Modifier.padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "🌟 Welcome Back!",
+                    text = "🌟 Welcome, $username!",
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Hi there, $username!",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold
-                )
+
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "Ready to learn some amazing sign language? Let's start with the ABCs! 🤟",
@@ -143,7 +137,7 @@ fun HomeScreen(navController: NavHostController, username: String) {
                 )
             }
         }
-        
+
         // Quick Stats Row
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -157,14 +151,14 @@ fun HomeScreen(navController: NavHostController, username: String) {
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    // --- ADJUSTED PADDING ---
+                    modifier = Modifier.padding(12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("🔥", fontSize = 24.sp)
-                    Spacer(modifier = Modifier.height(4.dp))
+
                     if (isLoading) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(24.dp),
                             color = Color.White,
                             strokeWidth = 2.dp
                         )
@@ -177,14 +171,14 @@ fun HomeScreen(navController: NavHostController, username: String) {
                         )
                     }
                     Text(
-                        text = "Day Streak",
+                        text = "Day Streak 🔥",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White,
                         fontWeight = FontWeight.Medium
                     )
                 }
             }
-            
+
             // Letters Learned Card
             Card(
                 modifier = Modifier.weight(1f),
@@ -193,14 +187,14 @@ fun HomeScreen(navController: NavHostController, username: String) {
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    // --- ADJUSTED PADDING ---
+                    modifier = Modifier.padding(12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("📚", fontSize = 24.sp)
-                    Spacer(modifier = Modifier.height(4.dp))
+
                     if (isLoading) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(24.dp),
                             color = Color.White,
                             strokeWidth = 2.dp
                         )
@@ -213,7 +207,7 @@ fun HomeScreen(navController: NavHostController, username: String) {
                         )
                     }
                     Text(
-                        text = "Letters Learned",
+                        text = "Letters Learned 📚",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White,
                         fontWeight = FontWeight.Medium
@@ -221,15 +215,8 @@ fun HomeScreen(navController: NavHostController, username: String) {
                 }
             }
         }
-        
-        // Enhanced Dashboard Cards
-        Text(
-            text = "🎯 Quick Actions",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold
-        )
-        
+
+
         DashboardCard(
             title = "My Progress 📈",
             subtitle = "Track your learning journey",
@@ -237,7 +224,7 @@ fun HomeScreen(navController: NavHostController, username: String) {
             color = Color(0xFF4ECDC4), // Teal
             onClick = { navController.navigate("progress/$username") }
         )
-        
+
         DashboardCard(
             title = "My Achievements 🏆",
             subtitle = "See your amazing badges",
@@ -245,7 +232,7 @@ fun HomeScreen(navController: NavHostController, username: String) {
             color = Color(0xFFFF6B6B), // Coral
             onClick = { navController.navigate("achievements/$username") }
         )
-        
+
         DashboardCard(
             title = "Class Leaderboard 🏅",
             subtitle = "Compete with friends",
@@ -267,7 +254,8 @@ fun DashboardCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (subtitle != null) 160.dp else 140.dp),
+            // --- ADJUSTED HEIGHT ---
+            .height(if (subtitle != null) 125.dp else 100.dp),
         colors = CardDefaults.cardColors(containerColor = color),
         onClick = onClick,
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),

@@ -73,14 +73,6 @@ fun LessonsScreen(navController: NavHostController, username: String = "") {
             }
         }
 
-        // Enhanced Lesson Cards
-        Text(
-            text = "🎯 Available Lessons",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold
-        )
-
         // 🔹 Tutorial card navigates to TutorialScreen
         LessonCard(
             title = "Tutorial",
@@ -135,7 +127,7 @@ fun LessonCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (subtitle != null) 130.dp else 110.dp)
+            .height(if (subtitle != null) 125.dp else 100.dp)
             .graphicsLayer(scaleX = scale, scaleY = scale),
         colors = CardDefaults.cardColors(containerColor = color),
         onClick = onClick,

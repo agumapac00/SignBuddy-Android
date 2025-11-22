@@ -240,6 +240,7 @@ fun SignBuddyUsernameScreen(navController: NavController) {
                                 text = "Let's Learn! 🚀",
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.Bold
+
                                 ),
                                 color = Color.White
                             )
