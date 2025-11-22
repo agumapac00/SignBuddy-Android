@@ -832,9 +832,6 @@ fun LevelSelectionScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Start
         ) {
-            IconButton(onClick = onBackToLessons) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back to lessons")
-            }
         }
         Spacer(modifier = Modifier.height(4.dp))
         // Compact Header
@@ -1064,7 +1061,7 @@ fun PracticeInterfaceScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(340.dp)
+                .height(300.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color.Black),
             contentAlignment = Alignment.Center
