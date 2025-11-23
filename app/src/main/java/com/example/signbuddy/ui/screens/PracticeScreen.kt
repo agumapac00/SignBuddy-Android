@@ -186,15 +186,21 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
                                 timeSpent = (System.currentTimeMillis() - sessionStartTime) / 1000,
                                 lettersCompleted = lettersCompleted,
                                 perfectSigns = perfectSigns,
-                                mistakes = mistakes
+                                mistakes = mistakes,
+                                actualScore = score // Pass the actual score earned in practice
                             )
                             
+                            android.util.Log.d("PracticeScreen", "Calling updateProgress with actualScore=$score, lettersCompleted=$lettersCompleted")
                             progressTrackingService.updateProgress(username, sessionResult)
                                 .onSuccess { update ->
+                                    android.util.Log.d("PracticeScreen", "✅ Progress saved successfully!")
+                                    android.util.Log.d("PracticeScreen", "XP Gained: ${update.xpGained}, Score Gained: ${update.scoreGained}")
                                     progressUpdate = update
                                     showProgressDialog = true
                                 }
-                                .onFailure { /* Handle error */ }
+                                .onFailure { error ->
+                                    android.util.Log.e("PracticeScreen", "❌ Failed to save progress", error)
+                                }
                         }
                     }
                     
@@ -233,9 +239,16 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
     }
 
     // CameraX setup: runs only when permission granted, practicing enabled, model loaded, and on practice screen
-    LaunchedEffect(hasPermission, useFrontCamera, isPracticing, modelInterpreter, showLevelSelection) {
-        if (!hasPermission || !isPracticing || modelInterpreter == null || showLevelSelection) return@LaunchedEffect
+    LaunchedEffect(hasPermission, useFrontCamera, isPracticing, modelInterpreter, showLevelSelection, shouldStopAnalysis) {
+        Log.d("PracticeScreen", "=== CAMERA SETUP LaunchedEffect ===")
+        Log.d("PracticeScreen", "hasPermission: $hasPermission, isPracticing: $isPracticing, modelInterpreter: ${modelInterpreter != null}, showLevelSelection: $showLevelSelection, shouldStopAnalysis: $shouldStopAnalysis")
+        
+        if (!hasPermission || !isPracticing || modelInterpreter == null || showLevelSelection || shouldStopAnalysis) {
+            Log.d("PracticeScreen", "Skipping camera setup - conditions not met")
+            return@LaunchedEffect
+        }
 
+        Log.d("PracticeScreen", "Setting up camera and analyzer...")
         val provider = ProcessCameraProvider.getInstance(context).get()
         val preview = Preview.Builder().build().apply { setSurfaceProvider(previewView.surfaceProvider) }
         val selector = if (useFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
@@ -258,6 +271,7 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
                 // update UI states based on prediction; guard while feedback is visible
                 currentPrediction = prediction
                 if (!showFeedback && prediction.isNotEmpty()) {
+                    Log.d("PracticeScreen", "Prediction received: '$prediction', target: '$targetLetter'")
                     if (prediction.uppercase() == targetLetter.uppercase()) {
                         feedbackCorrect = true
                         correctToneGenerator.startTone(ToneGenerator.TONE_PROP_ACK, 200)
@@ -279,13 +293,42 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
         try {
             provider.unbindAll()
             provider.bindToLifecycle(lifecycleOwner, selector, preview, imageAnalyzer)
+            Log.d("PracticeScreen", "Camera bound successfully")
         } catch (e: Exception) {
+            Log.e("PracticeScreen", "Error binding camera", e)
             e.printStackTrace()
         }
     }
 
     // UI (kept intact from your original)
     Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("🤟 Practice Mode", style = MaterialTheme.typography.titleLarge) },
+                navigationIcon = {
+                    IconButton(onClick = {
+                        shouldStopAnalysis = true
+                        showFeedback = false
+                        if (showLevelSelection) {
+                            navController?.navigate("studentDashboard/$username?tab=1") {
+                                popUpTo("studentDashboard/{username}") { inclusive = false }
+                                launchSingleTop = true
+                            }
+                        } else {
+                            isPracticing = false
+                            showLevelSelection = true
+                        }
+                    }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
+                )
+            )
+        }
     ) { inner ->
         Box(
             modifier = Modifier
@@ -315,12 +358,18 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
                     onContinue = {
                         soundEffects.playButtonClick()
                         hapticFeedback.lightTap()
+                        shouldStopAnalysis = false // Ensure detection is enabled
                         showLevelSelection = false
                         targetLetter = getRandomTarget(selectedLevel)
+                        sessionStartTime = System.currentTimeMillis() // Reset session start time
+                        lettersCompleted = 0
+                        perfectSigns = 0
+                        mistakes = 0
                     },
                     onBackToLessons = {
                         shouldStopAnalysis = true
-                        navController?.navigate("lessons/$username") {
+                        navController?.navigate("studentDashboard/$username?tab=1") {
+                            popUpTo("studentDashboard/{username}") { inclusive = false }
                             launchSingleTop = true
                         }
                     },
@@ -349,9 +398,16 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
                         hapticFeedback.lightTap()
                         isPracticing = !isPracticing
                         if (isPracticing) {
+                            shouldStopAnalysis = false // Reset to allow detection
+                            sessionStartTime = System.currentTimeMillis() // Reset session start time
                             targetLetter = getRandomTarget(selectedLevel)
                             score = 0
                             streak = 0
+                            lettersCompleted = 0
+                            perfectSigns = 0
+                            mistakes = 0
+                        } else {
+                            shouldStopAnalysis = true
                         }
                     },
                     onReset = {
@@ -560,11 +616,13 @@ class HandSignAnalyzer(
         try {
             // Check if we should stop analysis
             if (shouldStop()) {
+                image.close()
                 return
             }
             
             val currentTime = System.currentTimeMillis()
             if (currentTime - lastAnalysisTime < analysisInterval) {
+                image.close()
                 return
             }
             lastAnalysisTime = currentTime
@@ -572,6 +630,7 @@ class HandSignAnalyzer(
             if (modelInterpreter == null) {
                 Log.e(TAG, "Model interpreter is null")
                 handler.post { onPrediction("") }
+                image.close()
                 return
             }
             // Handle rotation and flip for front camera
@@ -585,6 +644,7 @@ class HandSignAnalyzer(
             if (bitmap.isRecycled || bitmap.width <= 0 || bitmap.height <= 0) {
                 Log.e(TAG, "Invalid bitmap: recycled=${bitmap.isRecycled}, size=${bitmap.width}x${bitmap.height}")
                 handler.post { onPrediction("") }
+                image.close()
                 return
             }
 
@@ -604,6 +664,7 @@ class HandSignAnalyzer(
             if (processedImage.bitmap.width != inputSize || processedImage.bitmap.height != inputSize) {
                 Log.e(TAG, "Bitmap size mismatch: expected ${inputSize}x${inputSize}, got ${processedImage.bitmap.width}x${processedImage.bitmap.height}")
                 handler.post { onPrediction("") }
+                image.close()
                 return
             }
             
@@ -622,6 +683,7 @@ class HandSignAnalyzer(
             if (floatIndex != inputArray.size) {
                 Log.e(TAG, "Input array size mismatch: expected ${inputArray.size}, got $floatIndex")
                 handler.post { onPrediction("") }
+                image.close()
                 return
             }
             
@@ -650,6 +712,7 @@ class HandSignAnalyzer(
             // If inference failed or we should stop, exit early
             if (!inferenceSucceeded || shouldStop()) {
                 handler.post { onPrediction("") }
+                image.close()
                 return
             }
 
@@ -1043,14 +1106,22 @@ fun PracticeInterfaceScreen(
             AndroidView(
                 factory = {
                     val frame = FrameLayout(context).apply {
-                        (previewView.parent as? ViewGroup)?.removeView(previewView)
-                        addView(
-                            previewView,
-                            FrameLayout.LayoutParams(
-                                FrameLayout.LayoutParams.MATCH_PARENT,
-                                FrameLayout.LayoutParams.MATCH_PARENT
+                        // Remove previewView from its current parent if it has one
+                        val currentParent = previewView.parent as? ViewGroup
+                        if (currentParent != null && currentParent != this) {
+                            currentParent.removeView(previewView)
+                        }
+                        // Only add if not already a child
+                        if (previewView.parent == null) {
+                            addView(
+                                previewView,
+                                FrameLayout.LayoutParams(
+                                    FrameLayout.LayoutParams.MATCH_PARENT,
+                                    FrameLayout.LayoutParams.MATCH_PARENT
+                                )
                             )
-                        )
+                        }
+                        // Add overlay (create new one each time as it's lightweight)
                         val overlay = OverlayView(context).apply {
                             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
                         }
@@ -1058,7 +1129,23 @@ fun PracticeInterfaceScreen(
                     }
                     frame
                 },
-                modifier = Modifier.matchParentSize()
+                modifier = Modifier.matchParentSize(),
+                update = { view ->
+                    // Update handler - ensure previewView is in the frame
+                    val frame = view as FrameLayout
+                    if (previewView.parent != frame && previewView.parent != null) {
+                        (previewView.parent as? ViewGroup)?.removeView(previewView)
+                    }
+                    if (previewView.parent == null) {
+                        frame.addView(
+                            previewView,
+                            FrameLayout.LayoutParams(
+                                FrameLayout.LayoutParams.MATCH_PARENT,
+                                FrameLayout.LayoutParams.MATCH_PARENT
+                            )
+                        )
+                    }
+                }
             )
             if (showFeedback) {
                 Box(

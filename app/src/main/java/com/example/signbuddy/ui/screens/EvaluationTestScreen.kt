@@ -253,6 +253,7 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
         correctCount = 0
         wrongCount = 0
         mistakes.clear()
+        streak = 0 // Reset streak when starting new session
         // set first
         currentLetter = if (letterQueue.isNotEmpty()) letterQueue[0] else ""
         timeLeft = 10
@@ -271,6 +272,7 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
         if (isPracticing && timeLeft <= 0) {
             // treat as wrong (no points) and move to next
             wrongCount += 1
+            streak = 0 // Reset streak when time runs out
             if (!mistakes.contains(currentLetter)) mistakes.add(currentLetter)
             // remove first element
             if (letterQueue.isNotEmpty()) letterQueue.removeAt(0)
@@ -321,6 +323,8 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
                         val gained = basePoints + bonus
                         score += gained
                         correctCount += 1
+                        // Update streak: increment on correct
+                        streak += 1
                         feedbackCorrect = true
                         correctToneGenerator.startTone(ToneGenerator.TONE_PROP_ACK, 200)
                         showFeedback = true
@@ -340,6 +344,8 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
                     } else {
                         // Wrong: 0 points, proceed to next
                         wrongCount += 1
+                        // Reset streak on wrong answer
+                        streak = 0
                         feedbackCorrect = false
                         incorrectToneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 200)
                         showFeedback = true
@@ -372,6 +378,33 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
 
     // UI
     Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("📝 Evaluation Mode", style = MaterialTheme.typography.titleLarge) },
+                navigationIcon = {
+                    IconButton(onClick = { 
+                        shouldStopAnalysis = true
+                        showFeedback = false
+                        if (showLevelSelection) {
+                        navController?.navigate("studentDashboard/$username") {
+                            popUpTo("studentDashboard/{username}") { inclusive = false }
+                            launchSingleTop = true
+                        }
+                        } else {
+                            isPracticing = false
+                            showLevelSelection = true
+                        }
+                    }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
+                )
+            )
+        }
     ) { inner ->
         Box(
             modifier = Modifier
@@ -471,6 +504,7 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
                         correctCount = 0
                         wrongCount = 0
                         mistakes.clear()
+                        streak = 0 // Reset streak on reset
                         timeLeft = 10
                     },
                     gradient = gradient
@@ -511,6 +545,7 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
                             correctCount = 0
                             wrongCount = 0
                             mistakes.clear()
+                            streak = 0 // Reset streak when done
                             timeLeft = 10
                         }) { Text("Done") }
                     },
@@ -553,7 +588,10 @@ fun EvaluationTestScreen(navController: NavController? = null, username: String 
                             onClick = { 
                                 showProgressDialog = false
                                 shouldStopAnalysis = true
-                                navController?.popBackStack()
+                                navController?.navigate("studentDashboard/$username?tab=1") {
+                                    popUpTo("studentDashboard/{username}") { inclusive = false }
+                                    launchSingleTop = true
+                                }
                             }
                         ) {
                             Text("Continue")
@@ -600,7 +638,7 @@ fun EvaluationLevelSelectionScreen(
             size = 50
         )
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
+                Text(
             text = "📝 Evaluation Mode",
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.primary,
@@ -617,38 +655,38 @@ fun EvaluationLevelSelectionScreen(
         // Compact Level selection cards
         Text(
             text = "🎯 Select Difficulty",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold
-        )
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
         Spacer(modifier = Modifier.height(10.dp))
         
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf(
+                    listOf(
                 LevelOption("Easy", "🟢", Color(0xFF4CAF50), "Perfect for beginners!"),
                 LevelOption("Average", "🟡", Color(0xFFFF9800), "Ready for a challenge?"),
                 LevelOption("Difficult", "🔴", Color(0xFFF44336), "Master level!")
             ).forEach { (lvl, emoji, color, description) ->
-                val isSelected = lvl == selectedLevel
-                Card(
-                    modifier = Modifier
+                        val isSelected = lvl == selectedLevel
+                        Card(
+                            modifier = Modifier
                         .fillMaxWidth()
                         .height(75.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isSelected) color else color.copy(alpha = 0.1f)
-                    ),
-                    elevation = CardDefaults.cardElevation(
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) color else color.copy(alpha = 0.1f)
+                            ),
+                            elevation = CardDefaults.cardElevation(
                         defaultElevation = if (isSelected) 10.dp else 4.dp
-                    ),
-                    shape = RoundedCornerShape(16.dp),
+                            ),
+                            shape = RoundedCornerShape(16.dp),
                     onClick = { onLevelSelected(lvl) }
                 ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxSize()
+                                modifier = Modifier
+                                    .fillMaxSize()
                             .padding(14.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -689,8 +727,8 @@ fun EvaluationLevelSelectionScreen(
         Spacer(modifier = Modifier.height(20.dp))
         
         // Continue button
-        Card(
-            modifier = Modifier.fillMaxWidth(),
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
             shape = RoundedCornerShape(16.dp),
@@ -702,13 +740,13 @@ fun EvaluationLevelSelectionScreen(
                     .padding(16.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
+                    ) {
+                        Text(
                     text = "Continue ➡️",
                     color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
             }
         }
     }
@@ -758,68 +796,68 @@ fun EvaluationInterfaceScreen(
                 modifier = Modifier.padding(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
+                        Text(
                     text = "🎯 Show the sign for",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp
+                    fontSize = 15.sp
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 
                 // Timer, Letter, Streak, and Score in a row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Timer card - Left side (smaller)
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(6.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                    // Timer card - Left side (smaller)
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                        shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Column(
+                            modifier = Modifier.padding(6.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
                             Text("⏱️", fontSize = 12.sp)
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "${timeLeft}s",
+                            Spacer(modifier = Modifier.height(1.dp))
+                                    Text(
+                                        text = "${timeLeft}s",
                                 fontSize = 14.sp,
-                                fontWeight = Bold,
-                                color = Color(0xFFD32F2F)
-                            )
-                        }
-                    }
-                    
-                    // Letter display - Center
-                    Box(
-                        modifier = Modifier
-                            .size(50.dp)
-                            .background(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                                        MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)
+                                        fontWeight = Bold,
+                                        color = Color(0xFFD32F2F)
                                     )
-                                ),
+                                }
+                            }
+                            
+                    // Letter display - Center
+                            Box(
+                                modifier = Modifier
+                            .size(50.dp)
+                                    .background(
+                                        brush = Brush.radialGradient(
+                                            colors = listOf(
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)
+                                            )
+                                        ),
                                 shape = RoundedCornerShape(25.dp)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = currentLetter.ifEmpty { "-" },
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = currentLetter.ifEmpty { "-" }, 
                             fontSize = 32.sp,
-                            fontWeight = ExtraBold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    
-                    // Streak and Score - Right side (side by side)
+                                    fontWeight = ExtraBold, 
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            
+                    // Streak and Score - Right side (side by side, streak moved left)
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp), // Reduced spacing to move streak left
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Streak card
@@ -863,82 +901,106 @@ fun EvaluationInterfaceScreen(
                             }
                         }
                     }
-                }
-                
+                        }
+                        
                 Spacer(modifier = Modifier.height(6.dp))
-                
-                // Progress indicator
-                Text(
+                        
+                        // Progress indicator
+                        Text(
                     text = "Progress: ${if (initialTotalAttempts > 0) (initialTotalAttempts - letterQueueSize) else 0} / $initialTotalAttempts",
                     fontSize = 11.sp,
-                    color = Color.Gray,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-        
-        // Camera preview - larger but still fits one page
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(280.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color.Black),
-            contentAlignment = Alignment.Center
-        ) {
-            AndroidView(
-                factory = {
-                    val frame = FrameLayout(context).apply {
-                        (previewView.parent as? ViewGroup)?.removeView(previewView)
-                        addView(
-                            previewView,
-                            FrameLayout.LayoutParams(
-                                FrameLayout.LayoutParams.MATCH_PARENT,
-                                FrameLayout.LayoutParams.MATCH_PARENT
-                            )
-                        )
-                        val overlay = EvaluationOverlayView(context).apply {
-                            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-                        }
-                        addView(overlay)
-                    }
-                    frame
-                },
-                modifier = Modifier.matchParentSize()
-            )
-            if (showFeedback) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.Black.copy(alpha = 0.5f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        if (feedbackCorrect) {
-                            AnimatedMascot(
-                                isHappy = true,
-                                isCelebrating = true,
-                                size = 40
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                        }
-                        Text(
-                            text = if (feedbackCorrect) "✅ Correct!" else "❌ Try again!",
-                            fontSize = 16.sp,
-                            color = if (feedbackCorrect) Color.Green else Color.Red,
-                            fontWeight = Bold
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            "Detected: $currentPrediction",
-                            fontSize = 11.sp,
-                            color = Color.White
+                            color = Color.Gray,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
-            }
-        }
+        
+        // Camera preview - larger but still fits one page
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                .height(277.dp)
+                .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AndroidView(
+                        factory = {
+                            val frame = FrameLayout(context).apply {
+                                // Remove previewView from its current parent if it has one
+                                val currentParent = previewView.parent as? ViewGroup
+                                if (currentParent != null && currentParent != this) {
+                                    currentParent.removeView(previewView)
+                                }
+                                // Only add if not already a child
+                                if (previewView.parent == null) {
+                                    addView(
+                                        previewView,
+                                        FrameLayout.LayoutParams(
+                                            FrameLayout.LayoutParams.MATCH_PARENT,
+                                            FrameLayout.LayoutParams.MATCH_PARENT
+                                        )
+                                    )
+                                }
+                                // Add overlay (create new one each time as it's lightweight)
+                                val overlay = EvaluationOverlayView(context).apply {
+                                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                                }
+                                addView(overlay)
+                            }
+                            frame
+                        },
+                        modifier = Modifier.matchParentSize(),
+                        update = { view ->
+                            // Update handler - ensure previewView is in the frame
+                            val frame = view as FrameLayout
+                            if (previewView.parent != frame && previewView.parent != null) {
+                                (previewView.parent as? ViewGroup)?.removeView(previewView)
+                            }
+                            if (previewView.parent == null) {
+                                frame.addView(
+                                    previewView,
+                                    FrameLayout.LayoutParams(
+                                        FrameLayout.LayoutParams.MATCH_PARENT,
+                                        FrameLayout.LayoutParams.MATCH_PARENT
+                                    )
+                                )
+                            }
+                        }
+                    )
+                    if (showFeedback) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                        .clip(RoundedCornerShape(12.dp))
+                                .background(Color.Black.copy(alpha = 0.5f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                if (feedbackCorrect) {
+                                    AnimatedMascot(
+                                        isHappy = true,
+                                        isCelebrating = true,
+                                size = 40
+                                    )
+                            Spacer(modifier = Modifier.height(2.dp))
+                                }
+                                Text(
+                                    text = if (feedbackCorrect) "✅ Correct!" else "❌ Try again!",
+                            fontSize = 16.sp,
+                                    color = if (feedbackCorrect) Color.Green else Color.Red,
+                                    fontWeight = Bold
+                                )
+                        Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    "Detected: $currentPrediction",
+                            fontSize = 11.sp,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
         
         // Compact Control buttons
         Row(
@@ -946,94 +1008,94 @@ fun EvaluationInterfaceScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             // Skip
-            Card(
-                modifier = Modifier.weight(1f),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFF9800)),
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFF9800)),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                 shape = RoundedCornerShape(10.dp),
                 onClick = onSkip
-            ) {
-                Column(
+                    ) {
+                        Column(
                     modifier = Modifier.padding(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
                     Text("⏭️  Skip", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             }
             
             // Camera switch
-            Card(
-                modifier = Modifier.weight(1f),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF9C27B0)),
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF9C27B0)),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                 shape = RoundedCornerShape(10.dp),
                 onClick = onCameraSwitch
-            ) {
-                Column(
+                    ) {
+                        Column(
                     modifier = Modifier.padding(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
                         text = if (useFrontCamera) "📷  Back" else "📷  Front",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
                         fontSize = 16.sp
-                    )
+                            )
+                        }
+                    }
                 }
-            }
-        }
-        
+
         // Start/Stop button
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = if (isPracticing) Color(0xFFF44336) else Color(0xFF4CAF50)
-            ),
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isPracticing) Color(0xFFF44336) else Color(0xFF4CAF50)
+                    ),
             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
             shape = RoundedCornerShape(12.dp),
             onClick = onStartStop
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
                     .padding(12.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (isPracticing) "⏹️" else "▶️",
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isPracticing) "⏹️" else "▶️",
                     fontSize = 18.sp
-                )
+                        )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (isPracticing) "Stop Evaluation" else "Start Evaluation",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
+                        Text(
+                            text = if (isPracticing) "Stop Evaluation" else "Start Evaluation",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
             }
         }
         
-        // Reset button
-        Card(
+                    // Reset button
+                    Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF607D8B)),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF607D8B)),
             elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
             shape = RoundedCornerShape(10.dp),
             onClick = onReset
-        ) {
-            Row(
+                    ) {
+                        Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(8.dp),
                 horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("🔄", fontSize = 16.sp)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "Reset",
-                    color = Color.White,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("🔄", fontSize = 16.sp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Reset",
+                                color = Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
@@ -1062,7 +1124,7 @@ private fun loadPracticeModel(context: Context): Interpreter? {
 private fun loadModelFile(context: Context, modelPath: String): MappedByteBuffer {
     val fileDescriptor = context.assets.openFd(modelPath)
     val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
-    val fileChannel = inputStream.channel
+        val fileChannel = inputStream.channel
     val startOffset = fileDescriptor.startOffset
     val declaredLength = fileDescriptor.declaredLength
     return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)

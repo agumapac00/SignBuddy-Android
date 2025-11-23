@@ -242,7 +242,7 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
                             contentDescription = "Sign for $currentLetter",
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height((240 * scale.value).dp) // Animate size
+                                .height((250 * scale.value).dp) // Animate size
                                 .clip(RoundedCornerShape(12.dp)),
                             contentScale = ContentScale.Fit
                         )

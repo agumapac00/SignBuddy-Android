@@ -213,13 +213,13 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
     // Player management
     var localPlayer by remember { mutableStateOf(Player("local", "You", 0, isLocal = true)) }
     var opponentPlayer by remember { mutableStateOf(Player("opponent", "Opponent", 0, isLocal = false)) }
+    var streak by remember { mutableStateOf(0) }
     
     // Camera and model state
     var cameraState by remember { mutableStateOf(CameraState()) }
     var connectionState by remember { mutableStateOf(ConnectionState()) }
     
-    // Player name input
-    var playerName by remember { mutableStateOf("") }
+    // Room code input
     var roomCodeInput by remember { mutableStateOf("") }
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -486,12 +486,12 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
     
     // Start hosting a game
     fun startHosting() {
-        if (playerName.isBlank()) {
-            Toast.makeText(context, "Please enter your name first!", Toast.LENGTH_SHORT).show()
+        if (username.isBlank()) {
+            Toast.makeText(context, "Username not available!", Toast.LENGTH_SHORT).show()
             return
         }
         
-        multiplayerViewModel?.createRoom(playerName)
+        multiplayerViewModel?.createRoom(username)
         // Immediately show connecting screen while room is being created
         gameState = GameState.CONNECTING
         soundEffects.playButtonClick()
@@ -499,8 +499,8 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
     }
 
     fun joinGame(roomCode: String) {
-        if (playerName.isBlank()) {
-            Toast.makeText(context, "Please enter your name first!", Toast.LENGTH_SHORT).show()
+        if (username.isBlank()) {
+            Toast.makeText(context, "Username not available!", Toast.LENGTH_SHORT).show()
             return
         }
         
@@ -509,7 +509,7 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
             return
         }
         
-        multiplayerViewModel?.joinRoom(roomCode, playerName)
+        multiplayerViewModel?.joinRoom(roomCode, username)
         soundEffects.playButtonClick()
         hapticFeedback.lightTap()
     }
@@ -584,6 +584,13 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
         
         val isCorrect = answer.equals(question.answer, ignoreCase = true)
 
+        // Update streak: increment on correct, reset on wrong
+        if (isCorrect) {
+            streak += 1
+        } else {
+            streak = 0
+        }
+
         // Update local player state WITHOUT adding score (ViewModel will do that)
         localPlayer = localPlayer.copy(
             currentAnswer = answer,
@@ -630,6 +637,7 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
         lettersCompleted = 0
         perfectSigns = 0
         mistakes = 0
+        streak = 0
         // Regenerate questions for a fresh session
         gameSeed += 1
         
@@ -707,8 +715,6 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
                     onQuestionTypeChanged = { selectedQuestionType = it },
                     onStartHosting = { startHosting() },
                     onJoinGame = { roomCode -> joinGame(roomCode) },
-                    playerName = playerName,
-                    onPlayerNameChanged = { playerName = it },
                     roomCodeInput = roomCodeInput,
                     onRoomCodeChanged = { roomCodeInput = it },
                     isLoading = isLoading,
@@ -749,6 +755,7 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
                     questionIndex = questionIndex,
                     allQuestions = allQuestions,
                     cameraState = cameraState,
+                    streak = streak,
                     onAnswerSubmit = { submitAnswer(it) },
                     onNextQuestion = { nextQuestion() },
                     onUpdateLocalPlayer = { localPlayer = it },
@@ -1317,6 +1324,7 @@ fun PlayingScreen(
     questionIndex: Int,
     allQuestions: List<GameQuestion>,
     cameraState: CameraState,
+    streak: Int,
     onAnswerSubmit: (String) -> Unit,
     onNextQuestion: () -> Unit,
     onUpdateLocalPlayer: (Player) -> Unit,
@@ -1371,11 +1379,22 @@ fun PlayingScreen(
                     color = Color(0xFF4CAF50),
                     trackColor = Color(0xFF4CAF50).copy(alpha = 0.2f)
                 )
-                Text(
-                    text = "${localPlayer.score} pts",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${localPlayer.score} pts",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "🔥 $streak",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFFF6F00),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
             
             // Opponent Player
