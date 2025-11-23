@@ -286,32 +286,6 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
 
     // UI (kept intact from your original)
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("🤟 Practice Mode", style = MaterialTheme.typography.titleLarge) },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        shouldStopAnalysis = true
-                        showFeedback = false
-                        if (showLevelSelection) {
-                            navController?.navigate("lessons/$username") {
-                                launchSingleTop = true
-                            }
-                        } else {
-                            isPracticing = false
-                            showLevelSelection = true
-                        }
-                    }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
-                )
-            )
-        }
     ) { inner ->
         Box(
             modifier = Modifier
