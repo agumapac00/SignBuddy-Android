@@ -497,9 +497,14 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
     // Cleanup
     DisposableEffect(Unit) {
         onDispose {
+            // Stop analysis before closing interpreter to prevent crashes
+            shouldStopAnalysis = true
             correctToneGenerator.release()
             incorrectToneGenerator.release()
-            modelInterpreter?.close()
+            // Close interpreter after a brief delay to let running analysis finish
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                modelInterpreter?.close()
+            }, 300)
             feedbackHandler.removeCallbacks(showFeedbackRunnable)
             cameraExecutor.shutdown()
         }
@@ -598,7 +603,7 @@ class HandSignAnalyzer(
     private val numFeatures = 4 + numClasses // 31
     private val numDetections = 8400
     private val confThreshold = 0.3f // raw detection threshold
-    private val feedbackThreshold = 0.60f // FINAL confidence threshold (user requested 75%)
+    private val feedbackThreshold = 0.75f // FINAL confidence threshold (75%)
     private val iouThreshold = 0.5f
 
     // Reusable buffers to reduce allocations and GC pressure
@@ -633,8 +638,10 @@ class HandSignAnalyzer(
                 image.close()
                 return
             }
-            // Handle rotation and flip for front camera
-            val rotationDegrees = if (useFrontCamera) 270 else 0
+            // Handle rotation and flip for front/back camera
+            // Front camera: 270 degrees rotation + horizontal flip
+            // Back camera: 90 degrees rotation (no flip needed)
+            val rotationDegrees = if (useFrontCamera) 270 else 90
             var bitmap = image.toBitmap(rotationDegrees)
             if (useFrontCamera) {
                 bitmap = flipHorizontally(bitmap)
@@ -693,25 +700,49 @@ class HandSignAnalyzer(
             // Use synchronized block to prevent concurrent access
             var inferenceSucceeded = false
             
-            // Check again before running expensive inference
-            if (!shouldStop()) {
-                synchronized(interpreterLock) {
-                    // Double-check after acquiring lock
-                    if (!shouldStop()) {
+            // Check again before running expensive inference - also check interpreter is not null
+            val interpreter = modelInterpreter
+            if (!shouldStop() && interpreter != null) {
+                try {
+                    synchronized(interpreterLock) {
+                        // Double-check after acquiring lock - interpreter might have been closed
+                        if (shouldStop() || modelInterpreter == null) {
+                            image.close()
+                            return
+                        }
+                        // Additional safety check - try to access interpreter in a safe way
                         try {
-                            modelInterpreter.run(inputBuffer, outputArray3D)
+                            modelInterpreter!!.run(inputBuffer, outputArray3D)
                             inferenceSucceeded = true
+                        } catch (e: IllegalStateException) {
+                            // Interpreter was closed/released during inference
+                            Log.w(TAG, "Interpreter closed during inference", e)
+                            image.close()
+                            return
+                        } catch (e: NullPointerException) {
+                            // Interpreter became null
+                            Log.w(TAG, "Interpreter became null during inference", e)
+                            image.close()
+                            return
                         } catch (e: Exception) {
                             Log.e(TAG, "Error during model inference", e)
-                            handler.post { onPrediction("") }
+                            image.close()
+                            return
                         }
                     }
+                } catch (e: Exception) {
+                    // Catch any exception from synchronized block itself
+                    Log.e(TAG, "Error in synchronized block", e)
+                    image.close()
+                    return
                 }
+            } else {
+                image.close()
+                return
             }
             
             // If inference failed or we should stop, exit early
             if (!inferenceSucceeded || shouldStop()) {
-                handler.post { onPrediction("") }
                 image.close()
                 return
             }
@@ -759,6 +790,7 @@ class HandSignAnalyzer(
             }
 
             if (boundingBoxes.isEmpty()) {
+                image.close()
                 return
             }
 
@@ -770,17 +802,32 @@ class HandSignAnalyzer(
             val predictedLetter = if (bestBox != null && bestBox.cnf > feedbackThreshold) bestBox.clsName else ""
             Log.d(TAG, "Final prediction: $predictedLetter (conf: ${bestBox?.cnf ?: 0f})")
             handler.post { onPrediction(predictedLetter) }
+            // Close image after successful analysis
+            image.close()
 
         } catch (e: OutOfMemoryError) {
             Log.e(TAG, "Out of memory during analysis", e)
             // Force garbage collection
             System.gc()
             handler.post { onPrediction("") }
+        } catch (e: IllegalStateException) {
+            // Interpreter or camera was closed
+            Log.w(TAG, "Illegal state during analysis (likely closed)", e)
+            handler.post { onPrediction("") }
+        } catch (e: NullPointerException) {
+            // Something became null during analysis
+            Log.w(TAG, "Null pointer during analysis", e)
+            handler.post { onPrediction("") }
         } catch (e: Exception) {
             Log.e(TAG, "Error in analyze", e)
             handler.post { onPrediction("") }
         } finally {
-            image.close()
+            // Always close the image, even if there was an error
+            try {
+                image.close()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error closing image", e)
+            }
         }
     }
 

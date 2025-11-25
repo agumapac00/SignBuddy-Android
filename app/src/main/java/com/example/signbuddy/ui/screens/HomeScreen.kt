@@ -199,8 +199,10 @@ fun HomeScreen(navController: NavHostController, username: String) {
                             strokeWidth = 2.dp
                         )
                     } else {
+                        // Cap letters learned at 26 (total letters in alphabet)
+                        val lettersLearned = if (studentStats != null) studentStats!!.lettersLearned.coerceAtMost(26) else 0
                         Text(
-                            text = if (studentStats != null) "${studentStats!!.lettersLearned}" else "0",
+                            text = "$lettersLearned",
                             style = MaterialTheme.typography.headlineMedium,
                             color = Color.White,
                             fontWeight = FontWeight.Bold

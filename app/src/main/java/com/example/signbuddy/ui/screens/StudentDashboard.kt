@@ -73,11 +73,11 @@ fun StudentDashboard(
                         )
                         Icon(
                             Icons.Default.Book, 
-                            contentDescription = "Lessons",
+                            contentDescription = "Learning Modes",
                             modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
                         )
                     },
-                    label = { Text("Lessons") },
+                    label = { Text("Learning Modes") },
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 }
                 )

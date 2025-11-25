@@ -215,6 +215,14 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
     var opponentPlayer by remember { mutableStateOf(Player("opponent", "Opponent", 0, isLocal = false)) }
     var streak by remember { mutableStateOf(0) }
     
+    // Word progress tracking (for word quiz type)
+    var localWordProgress by remember { mutableStateOf("") } // e.g., "C", "CA", "CAT"
+    var opponentWordProgress by remember { mutableStateOf("") }
+    
+    // Last letter feedback (for word quiz type)
+    var lastSignedLetter by remember { mutableStateOf("") } // Last letter signed
+    var lastLetterWasCorrect by remember { mutableStateOf(false) } // Was last letter correct?
+    
     // Camera and model state
     var cameraState by remember { mutableStateOf(CameraState()) }
     var connectionState by remember { mutableStateOf(ConnectionState()) }
@@ -269,6 +277,13 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
             currentAnswer = multiplayerGameState.opponentCurrentAnswer,
             isCorrect = multiplayerGameState.opponentIsCorrect
         )
+        
+        // Update opponent word progress if it's a word question
+        if (currentQuestion?.type == QuestionType.WORD && multiplayerGameState.opponentCurrentAnswer.isNotEmpty()) {
+            opponentWordProgress = multiplayerGameState.opponentCurrentAnswer
+        } else if (currentQuestion?.type != QuestionType.WORD) {
+            opponentWordProgress = ""
+        }
         
         Log.d("MultiplayerScreen", "=== FORCE SCORE SYNC COMPLETE ===")
         Log.d("MultiplayerScreen", "Local score: $oldLocalScore -> ${localPlayer.score}")
@@ -439,13 +454,37 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
         }
     }
     
-    val wordQuestions = listOf(
-        GameQuestion("W1", QuestionType.WORD, "CAT", "C-A-T", 15),
-        GameQuestion("W2", QuestionType.WORD, "DOG", "D-O-G", 15),
-        GameQuestion("W3", QuestionType.WORD, "BAT", "B-A-T", 15),
-        GameQuestion("W4", QuestionType.WORD, "HAT", "H-A-T", 15),
-        GameQuestion("W5", QuestionType.WORD, "MAT", "M-A-T", 15)
+    // Word pool for generating different sets of questions
+    val wordPool = listOf(
+        "CAT" to "C-A-T",
+        "DOG" to "D-O-G",
+        "BAT" to "B-A-T",
+        "HAT" to "H-A-T",
+        "MAT" to "M-A-T",
+        "RAT" to "R-A-T",
+        "SAT" to "S-A-T",
+        "BAG" to "B-A-G",
+        "TAG" to "T-A-G",
+        "BED" to "B-E-D",
+        "RED" to "R-E-D",
+        "BIG" to "B-I-G",
+        "PIG" to "P-I-G",
+        "LOG" to "L-O-G",
+        "FOG" to "F-O-G"
     )
+    
+    val wordQuestions = remember(selectedQuestionType, gameSeed) {
+        // Generate 10 random words from the pool for this session
+        wordPool.shuffled().take(10).mapIndexed { index, (word, answer) ->
+            GameQuestion(
+                id = "W${index + 1}",
+                type = QuestionType.WORD,
+                content = word,
+                answer = answer,
+                timeLimit = 15
+            )
+        }
+    }
     
     val allQuestions = if (selectedQuestionType == QuestionType.LETTER) letterQuestions else wordQuestions
     
@@ -459,9 +498,25 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
             localPlayer = localPlayer.copy(currentAnswer = "", isCorrect = false)
             opponentPlayer = opponentPlayer.copy(currentAnswer = "", isCorrect = false)
             
+            // Reset word progress for new question
+            localWordProgress = ""
+            opponentWordProgress = ""
+            lastSignedLetter = ""
+            lastLetterWasCorrect = false
+            
             // Clear opponent answer in ViewModel
             multiplayerViewModel?.clearOpponentAnswer()
         } else {
+            // All questions completed - check if last word was incomplete
+            val lastQuestion = currentQuestion
+            if (lastQuestion?.type == QuestionType.WORD) {
+                val expectedWord = lastQuestion.content.uppercase()
+                if (localWordProgress.length < expectedWord.length) {
+                    // Last word was not completed - count as mistake
+                    mistakes += 1
+                    lettersCompleted += 1
+                }
+            }
             gameState = GameState.FINISHED
         }
     }
@@ -560,7 +615,17 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
             delay(1000)
             timeLeft--
         } else if (timeLeft == 0 && gameState == GameState.PLAYING) {
-            // Time's up - move to next question
+            // Time's up - check if word was incomplete (for word quiz type)
+            val question = currentQuestion
+            if (question?.type == QuestionType.WORD) {
+                val expectedWord = question.content.uppercase()
+                if (localWordProgress.length < expectedWord.length) {
+                    // Word was not completed - count as mistake
+                    mistakes += 1
+                    lettersCompleted += 1 // Count as attempted/completed (even if wrong)
+                }
+            }
+            // Move to next question
             nextQuestion()
         }
     }
@@ -568,21 +633,54 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
     fun submitAnswer(answer: String) {
         val question = currentQuestion ?: return
         
-        // Allow multiple submissions for the same letter to enable continuous scoring
-        Log.d("MultiplayerScreen", "Processing letter: '$answer' (current answer: '${localPlayer.currentAnswer}')")
-        
         val responseTime = System.currentTimeMillis()
         val questionStartTime = questionIndex * 10000L // Approximate question start time
         val actualResponseTime = responseTime - questionStartTime
         
-        Log.d("MultiplayerScreen", "=== LETTER SIGNING ===")
+        Log.d("MultiplayerScreen", "=== ANSWER SUBMISSION ===")
         Log.d("MultiplayerScreen", "Player: ${multiplayerGameState.localPlayerName}")
-        Log.d("MultiplayerScreen", "Question: ${currentQuestion?.content}")
+        Log.d("MultiplayerScreen", "Question: ${currentQuestion?.content}, Type: ${currentQuestion?.type}")
         Log.d("MultiplayerScreen", "Letter Signed: '$answer'")
-        Log.d("MultiplayerScreen", "Response Time: $actualResponseTime ms")
-        Log.d("MultiplayerScreen", "Score Before: ${localPlayer.score}")
         
-        val isCorrect = answer.equals(question.answer, ignoreCase = true)
+        val isCorrect: Boolean
+        val newAnswer: String
+        
+        if (question.type == QuestionType.WORD) {
+            // Word quiz: letter-by-letter spelling
+            val expectedWord = question.content.uppercase()
+            val currentProgress = localWordProgress.uppercase()
+            val nextExpectedLetter = if (currentProgress.length < expectedWord.length) {
+                expectedWord[currentProgress.length].toString()
+            } else ""
+            
+            if (answer.uppercase() == nextExpectedLetter) {
+                // Correct letter - add to progress
+                localWordProgress = currentProgress + answer.uppercase()
+                newAnswer = localWordProgress
+                // Only mark as correct when word is fully spelled
+                isCorrect = localWordProgress.length == expectedWord.length
+                
+                // Track last letter feedback
+                lastSignedLetter = answer.uppercase()
+                lastLetterWasCorrect = true
+                
+                Log.d("MultiplayerScreen", "✅ Correct letter! Progress: '$localWordProgress'")
+            } else {
+                // Wrong letter - keep current progress (don't reset), just don't advance
+                newAnswer = currentProgress
+                isCorrect = false
+                
+                // Track last letter feedback
+                lastSignedLetter = answer.uppercase()
+                lastLetterWasCorrect = false
+                
+                Log.d("MultiplayerScreen", "❌ Wrong letter! Expected '$nextExpectedLetter', got '$answer'. Progress kept: '$currentProgress'")
+            }
+        } else {
+            // Letter quiz: single letter answer
+            isCorrect = answer.equals(question.answer, ignoreCase = true)
+            newAnswer = answer
+        }
 
         // Update streak: increment on correct, reset on wrong
         if (isCorrect) {
@@ -593,34 +691,46 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
 
         // Update local player state WITHOUT adding score (ViewModel will do that)
         localPlayer = localPlayer.copy(
-            currentAnswer = answer,
+            currentAnswer = newAnswer,
             isCorrect = isCorrect,
             responseTime = actualResponseTime,
             totalCorrectAnswers = if (isCorrect) localPlayer.totalCorrectAnswers + 1 else localPlayer.totalCorrectAnswers
         )
 
         // Track session stats for summary
-        if (isCorrect) {
-            perfectSigns += 1
+        if (question.type == QuestionType.WORD) {
+            // For word quiz: only count when word is fully completed
+            if (isCorrect) {
+                // Word is fully spelled correctly
+                perfectSigns += 1
+                lettersCompleted += 1 // Count as one completed word
+            }
+            // Don't count mistakes for individual wrong letters in word quiz
+            // Only count if word is incomplete when time runs out (handled in nextQuestion)
         } else {
-            mistakes += 1
+            // For letter quiz: count each submission
+            if (isCorrect) {
+                perfectSigns += 1
+            } else {
+                mistakes += 1
+            }
+            lettersCompleted += 1
         }
-        lettersCompleted += 1
 
         Log.d("MultiplayerScreen", "Score will be updated by ViewModel after sync")
 
         // Submit answer to ViewModel for synchronization and score calculation
-        multiplayerViewModel?.submitAnswer(answer, isCorrect, actualResponseTime)
+        multiplayerViewModel?.submitAnswer(newAnswer, isCorrect, actualResponseTime)
 
         // Play audio and haptics based on correctness
         if (isCorrect) {
             soundEffects.playCorrect()
             hapticFeedback.successPattern()
-            Log.d("MultiplayerScreen", "✅ Correct: '$answer'")
+            Log.d("MultiplayerScreen", "✅ Correct: '$newAnswer'")
         } else {
             incorrectToneGenerator.startTone(ToneGenerator.TONE_SUP_ERROR, 150)
             hapticFeedback.lightTap()
-            Log.d("MultiplayerScreen", "❌ Incorrect: '$answer', expected '${question.answer}'")
+            Log.d("MultiplayerScreen", "❌ Incorrect or incomplete")
         }
     }
     
@@ -638,6 +748,11 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
         perfectSigns = 0
         mistakes = 0
         streak = 0
+        // Reset word progress
+        localWordProgress = ""
+        opponentWordProgress = ""
+        lastSignedLetter = ""
+        lastLetterWasCorrect = false
         // Regenerate questions for a fresh session
         gameSeed += 1
         
@@ -646,7 +761,7 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
     }
 
     fun restartMultiplayerGame() {
-        resetGame()
+        resetGame() // This already increments gameSeed to regenerate questions
         // Clear finished flag and scores in ViewModel, then start countdown
         multiplayerViewModel?.restartGameForBothPlayers()
         gameState = GameState.COUNTDOWN
@@ -660,14 +775,33 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
                     IconButton(onClick = { 
                         soundEffects.playButtonClick()
                         hapticFeedback.lightTap()
+                        // If we're in CONNECTING state (host game code), go back to lobby
+                        if (gameState == GameState.CONNECTING) {
+                            gameState = GameState.LOBBY
+                            connectionState = ConnectionState()
+                            multiplayerViewModel?.leaveRoom()
+                        }
+                        // If we're in-game (PLAYING, COUNTDOWN, RESULTS), go back to lobby
+                        else if (gameState == GameState.PLAYING || gameState == GameState.COUNTDOWN || gameState == GameState.RESULTS) {
+                            if (!isExitHandled) {
+                                isExitHandled = true
+                                showProgressDialog = false
+                                progressUpdate = null
+                                hasShownExitSummary = false
+                                hasShownResultsOnce = false
+                                gameState = GameState.LOBBY
+                                resetGame()
+                                multiplayerViewModel?.leaveRoom()
+                            }
+                        }
                         // If we're in lobby or not connected, go back to lessons screen
-                        if (gameState == GameState.LOBBY || !(multiplayerGameState?.isConnected ?: false)) {
+                        else if (gameState == GameState.LOBBY || !(multiplayerGameState?.isConnected ?: false)) {
                             navController?.navigate("studentDashboard/$username") {
                                 popUpTo("studentDashboard/{username}") { inclusive = false }
                                 launchSingleTop = true
                             }
                         } else {
-                            // Otherwise, terminate the session immediately and return to lessons (with bottom nav)
+                            // Otherwise (FINISHED state), terminate the session and return to lessons
                             if (!isExitHandled) {
                                 isExitHandled = true
                                 showProgressDialog = false
@@ -704,9 +838,7 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
-                    .padding(bottom = 32.dp),
+                    .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 when (gameState) {
@@ -756,8 +888,15 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
                     allQuestions = allQuestions,
                     cameraState = cameraState,
                     streak = streak,
+                    useFrontCamera = useFrontCamera,
+                    localWordProgress = localWordProgress,
+                    opponentWordProgress = opponentWordProgress,
+                    lastSignedLetter = lastSignedLetter,
+                    lastLetterWasCorrect = lastLetterWasCorrect,
                     onAnswerSubmit = { submitAnswer(it) },
                     onNextQuestion = { nextQuestion() },
+                    onSkip = { nextQuestion() },
+                    onCameraSwitch = { useFrontCamera = !useFrontCamera },
                     onUpdateLocalPlayer = { localPlayer = it },
                     onUpdateCameraState = { cameraState = it },
                     soundEffects = soundEffects,
@@ -859,8 +998,6 @@ fun LobbyScreen(
     onQuestionTypeChanged: (QuestionType) -> Unit,
     onStartHosting: () -> Unit,
     onJoinGame: (String) -> Unit,
-    playerName: String,
-    onPlayerNameChanged: (String) -> Unit,
     roomCodeInput: String,
     onRoomCodeChanged: (String) -> Unit,
     isLoading: Boolean,
@@ -871,79 +1008,46 @@ fun LobbyScreen(
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(24.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Header
         Text(
-            text = "🎯 Multiplayer Quiz Battle",
-            style = MaterialTheme.typography.headlineMedium,
+            text = "🎯 Multiplayer Quiz",
+            style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center
         )
         
+        // Engaging subtitle
         Text(
-            text = "Challenge a friend and see who's the fastest!",
+            text = "Challenge a friend and see who's the fastest! 🏆",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 16.dp)
         )
-        
-        // Player Name Input
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            shape = RoundedCornerShape(20.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "👤 Enter Your Name",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                OutlinedTextField(
-                    value = playerName,
-                    onValueChange = onPlayerNameChanged,
-                    label = { Text("Your Name") },
-                    placeholder = { Text("Enter your name...") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                    )
-                )
-            }
-        }
         
         // Question Type Selection
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            shape = RoundedCornerShape(20.dp)
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            shape = RoundedCornerShape(16.dp)
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
+                modifier = Modifier.padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
                     text = "📝 Choose Quiz Type",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
                 )
                 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -957,9 +1061,9 @@ fun LobbyScreen(
                                 MaterialTheme.colorScheme.primary else Color(0xFFF5F5F5)
                         ),
                         elevation = CardDefaults.cardElevation(
-                            defaultElevation = if (selectedQuestionType == QuestionType.LETTER) 8.dp else 2.dp
+                            defaultElevation = if (selectedQuestionType == QuestionType.LETTER) 6.dp else 2.dp
                         ),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(12.dp),
                         onClick = {
                             soundEffects.playButtonClick()
                             hapticFeedback.lightTap()
@@ -967,7 +1071,7 @@ fun LobbyScreen(
                         }
                     ) {
                         Column(
-                            modifier = Modifier.padding(20.dp),
+                            modifier = Modifier.padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text("🔤", fontSize = 32.sp)
@@ -996,9 +1100,9 @@ fun LobbyScreen(
                                 MaterialTheme.colorScheme.primary else Color(0xFFF5F5F5)
                         ),
                         elevation = CardDefaults.cardElevation(
-                            defaultElevation = if (selectedQuestionType == QuestionType.WORD) 8.dp else 2.dp
+                            defaultElevation = if (selectedQuestionType == QuestionType.WORD) 6.dp else 2.dp
                         ),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(12.dp),
                         onClick = {
                             soundEffects.playButtonClick()
                             hapticFeedback.lightTap()
@@ -1006,7 +1110,7 @@ fun LobbyScreen(
                         }
                     ) {
                         Column(
-                            modifier = Modifier.padding(20.dp),
+                            modifier = Modifier.padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text("📝", fontSize = 32.sp)
@@ -1019,7 +1123,7 @@ fun LobbyScreen(
                                 fontSize = 16.sp
                             )
                             Text(
-                                text = "Spell words letter by letter",
+                                text = "Spell words",
                                 color = if (selectedQuestionType == QuestionType.WORD) 
                                     Color.White.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                                 fontSize = 12.sp
@@ -1038,23 +1142,23 @@ fun LobbyScreen(
             shape = RoundedCornerShape(16.dp)
         ) {
             Column(
-                modifier = Modifier.padding(20.dp)
+                modifier = Modifier.padding(16.dp)
             ) {
                 Text(
                     text = "🎮 How to Play",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
                 )
                 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 
                 val rules = listOf(
-                    "• Connect with another player on their device",
-                    "• Both players see the same question at the same time",
-                    "• Use your camera to sign the answer",
-                    "• Fastest and most accurate wins bonus points!",
-                    "• See your opponent's progress in real-time"
+                    "• Connect with another player",
+                    "• Both see same question",
+                    "• Use camera to sign answer",
+                    "• Fastest & accurate wins!"
                 )
                 
                 rules.forEach { rule ->
@@ -1062,6 +1166,7 @@ fun LobbyScreen(
                         text = rule,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                        fontSize = 13.sp,
                         modifier = Modifier.padding(vertical = 2.dp)
                     )
                 }
@@ -1085,7 +1190,7 @@ fun LobbyScreen(
                     .height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
                 shape = RoundedCornerShape(16.dp),
-                enabled = !isLoading && playerName.isNotBlank()
+                enabled = !isLoading
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(
@@ -1097,7 +1202,8 @@ fun LobbyScreen(
                         text = "🏠 Host Game",
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
                     )
                 }
             }
@@ -1119,7 +1225,8 @@ fun LobbyScreen(
                     text = "🔗 Join Game",
                     style = MaterialTheme.typography.titleMedium,
                     color = Color.White,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
                 )
             }
         }
@@ -1325,8 +1432,15 @@ fun PlayingScreen(
     allQuestions: List<GameQuestion>,
     cameraState: CameraState,
     streak: Int,
+    useFrontCamera: Boolean,
+    localWordProgress: String,
+    opponentWordProgress: String,
+    lastSignedLetter: String,
+    lastLetterWasCorrect: Boolean,
     onAnswerSubmit: (String) -> Unit,
     onNextQuestion: () -> Unit,
+    onSkip: () -> Unit,
+    onCameraSwitch: () -> Unit,
     onUpdateLocalPlayer: (Player) -> Unit,
     onUpdateCameraState: (CameraState) -> Unit,
     soundEffects: com.example.signbuddy.ui.components.SoundEffectsManager,
@@ -1338,348 +1452,386 @@ fun PlayingScreen(
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Timer
+        // White Card with everything inside
         Card(
-            colors = CardDefaults.cardColors(
-                containerColor = if (timeLeft <= 5) Color(0xFFFF5722) else Color(0xFF4CAF50)
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-            shape = RoundedCornerShape(20.dp)
-        ) {
-            Text(
-                text = "⏱️ $timeLeft",
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color.White,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        
-        // Player Progress Bars
-        Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            shape = RoundedCornerShape(16.dp)
         ) {
-            // Local Player
             Column(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.padding(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text = "You",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                LinearProgressIndicator(
-                    progress = localPlayer.score / 100f,
-                    modifier = Modifier.fillMaxWidth(),
-                    color = Color(0xFF4CAF50),
-                    trackColor = Color(0xFF4CAF50).copy(alpha = 0.2f)
-                )
+                // Top: Timer, You Score, Opponent Score
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "${localPlayer.score} pts",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        text = "🔥 $streak",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFFF6F00),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-            
-            // Opponent Player
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Opponent",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color(0xFFFF6B6B),
-                    fontWeight = FontWeight.Bold
-                )
-                LinearProgressIndicator(
-                    progress = opponentPlayer.score / 100f,
-                    modifier = Modifier.fillMaxWidth(),
-                    color = Color(0xFFFF6B6B),
-                    trackColor = Color(0xFFFF6B6B).copy(alpha = 0.2f)
-                )
-                Text(
-                    text = "${opponentPlayer.score} pts",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-            }
-        }
-        
-        // Question Display
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            shape = RoundedCornerShape(20.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Sign this:",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                Box(
-                    modifier = Modifier
-                        .size(120.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                            shape = RoundedCornerShape(60.dp)
+                    // Timer - Compact
+                    Card(
+                        modifier = Modifier.weight(0.3f),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (timeLeft <= 5) Color(0xFFFF5722) else Color(0xFF4CAF50)
                         ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = currentQuestion?.content ?: "",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "⏱️ $timeLeft",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
+                    
+                    // You Score - Compact
+                    Column(
+                        modifier = Modifier.weight(0.35f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "You",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp
+                        )
+                        LinearProgressIndicator(
+                            progress = localPlayer.score / 100f,
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFF4CAF50),
+                            trackColor = Color(0xFF4CAF50).copy(alpha = 0.2f)
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${localPlayer.score}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                fontSize = 9.sp
+                            )
+                            Text(
+                                text = "🔥$streak",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFFF6F00),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.sp
+                            )
+                        }
+                    }
+                    
+                    // Opponent Score - Compact
+                    Column(
+                        modifier = Modifier.weight(0.35f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Opponent",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFFF6B6B),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp
+                        )
+                        LinearProgressIndicator(
+                            progress = opponentPlayer.score / 100f,
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFFFF6B6B),
+                            trackColor = Color(0xFFFF6B6B).copy(alpha = 0.2f)
+                        )
+                        Text(
+                            text = "${opponentPlayer.score}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontSize = 9.sp
+                        )
+                    }
                 }
-                
-                if (currentQuestion?.type == QuestionType.WORD) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Spell it letter by letter",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-                }
-            }
-        }
-        
-        // Answer Status
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Local Player Status
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (localPlayer.isCorrect) Color(0xFF4CAF50) else 
-                                   if (localPlayer.currentAnswer.isNotEmpty()) Color(0xFFFF9800) else Color(0xFFF5F5F5)
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (localPlayer.isCorrect) "✅" else if (localPlayer.currentAnswer.isNotEmpty()) "⏳" else "⭕",
-                        fontSize = 20.sp
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "You: ${if (localPlayer.currentAnswer.isNotEmpty()) localPlayer.currentAnswer else "Waiting..."}",
-                        color = if (localPlayer.isCorrect) Color.White else Color.Black,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-            
-            // Opponent Player Status
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (opponentPlayer.isCorrect) Color(0xFFFF6B6B) else 
-                                   if (opponentPlayer.currentAnswer.isNotEmpty()) Color(0xFFFF9800) else Color(0xFFF5F5F5)
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (opponentPlayer.isCorrect) "✅" else if (opponentPlayer.currentAnswer.isNotEmpty()) "⏳" else "⭕",
-                        fontSize = 20.sp
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Opponent: ${if (opponentPlayer.currentAnswer.isNotEmpty()) opponentPlayer.currentAnswer else "Waiting..."}",
-                        color = if (opponentPlayer.isCorrect) Color.White else Color.Black,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
-        
-        // Camera Preview with Answer Submission
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            shape = RoundedCornerShape(20.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "📷 Sign Your Answer",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
                 
                 Spacer(modifier = Modifier.height(12.dp))
                 
-        // Real Camera Preview Area
-        Log.d("MultiplayerScreen", "Camera permission check: ${cameraState.isPermissionGranted}")
-        if (cameraState.isPermissionGranted) {
-            CameraPreview(
-                cameraState = cameraState,
-                currentQuestion = currentQuestion,
-                onSignDetected = { sign, confidence ->
-                    Log.d("MultiplayerScreen", "=== ON SIGN DETECTED ===")
-                    Log.d("MultiplayerScreen", "Sign: '$sign', Confidence: $confidence")
-                    
-                    onUpdateCameraState(cameraState.copy(
-                        lastDetectedSign = sign,
-                        confidence = confidence,
-                        isAnalyzing = true
-                    ))
-                    onUpdateLocalPlayer(localPlayer.copy(currentAnswer = sign))
-                    
-                    // Real-time sign detection and scoring
-                    if (confidence > 0.5f) {
-                        Log.d("MultiplayerScreen", "Confidence check passed - calling onAnswerSubmit")
-                        onAnswerSubmit(sign)
-                    } else {
-                        Log.d("MultiplayerScreen", "Confidence too low - not submitting answer")
-                    }
-                },
-                onAnalysisComplete = {
-                    onUpdateCameraState(cameraState.copy(isAnalyzing = false))
-                },
-                modelInterpreter = modelInterpreter,
-                imageProcessor = imageProcessor,
-                inputSize = inputSize
-            )
-        } else {
-            // Camera permission denied placeholder
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(150.dp)
-                    .background(Color.Red.copy(alpha = 0.1f), RoundedCornerShape(16.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
+                // Center: You feedback (left) | Letter (center) | Opponent feedback (right)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("🚫", fontSize = 48.sp)
-                    Text(
-                        text = "Camera Permission Required",
-                        color = Color.Red,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = "Please enable camera access",
-                        color = Color.Red.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    // You feedback - Left
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (currentQuestion?.type == QuestionType.WORD) {
+                                // For word quiz: green if last letter correct, red if wrong, gray if no letter
+                                if (lastSignedLetter.isNotEmpty()) {
+                                    if (lastLetterWasCorrect) Color(0xFF4CAF50) else Color(0xFFFF5722)
+                                } else Color(0xFFF5F5F5)
+                            } else {
+                                // For letter quiz: original logic
+                                if (localPlayer.isCorrect) Color(0xFF4CAF50) else 
+                                if (localPlayer.currentAnswer.isNotEmpty()) Color(0xFFFF9800) else Color(0xFFF5F5F5)
+                            }
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (currentQuestion?.type == QuestionType.WORD) {
+                                    if (localWordProgress.length == (currentQuestion?.content?.length ?: 0)) "✅"
+                                    else if (lastSignedLetter.isNotEmpty()) if (lastLetterWasCorrect) "✓" else "✗"
+                                    else "⭕"
+                                } else {
+                                    if (localPlayer.isCorrect) "✅" else if (localPlayer.currentAnswer.isNotEmpty()) "⏳" else "⭕"
+                                },
+                                fontSize = 16.sp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (currentQuestion?.type == QuestionType.WORD) {
+                                    // For words, show last letter signed with color feedback
+                                    if (lastSignedLetter.isNotEmpty()) {
+                                        "You: $lastSignedLetter"
+                                    } else {
+                                        "You: ..."
+                                    }
+                                } else {
+                                    "You: ${if (localPlayer.currentAnswer.isNotEmpty()) localPlayer.currentAnswer else "..."}"
+                                },
+                                color = if (currentQuestion?.type == QuestionType.WORD) {
+                                    if (lastSignedLetter.isNotEmpty()) {
+                                        if (lastLetterWasCorrect) Color.White else Color.White
+                                    } else Color.Black
+                                } else {
+                                    if (localPlayer.isCorrect) Color.White else Color.Black
+                                },
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    
+                    // Letter/Word to be signed - Center
+                    Box(
+                        modifier = Modifier
+                            .size(if (currentQuestion?.type == QuestionType.WORD) 90.dp else 80.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                shape = RoundedCornerShape(40.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (currentQuestion?.type == QuestionType.WORD) {
+                            // For words: show each letter with opacity based on completion
+                            val word = currentQuestion.content.uppercase()
+                            val completedCount = localWordProgress.length
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                word.forEachIndexed { index, char ->
+                                    val isCompleted = index < completedCount
+                                    Text(
+                                        text = char.toString(),
+                                        style = MaterialTheme.typography.headlineLarge,
+                                        color = MaterialTheme.colorScheme.primary.copy(
+                                            alpha = if (isCompleted) 0.4f else 1.0f
+                                        ),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 28.sp
+                                    )
+                                }
+                                // Show check icon when word is complete
+                                if (completedCount == word.length) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "✓",
+                                        fontSize = 28.sp,
+                                        color = Color(0xFF4CAF50)
+                                    )
+                                }
+                            }
+                        } else {
+                            // For letters: original display
+                            Text(
+                                text = currentQuestion?.content ?: "",
+                                style = MaterialTheme.typography.headlineLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 40.sp
+                            )
+                        }
+                    }
+                    
+                    // Opponent feedback - Right
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (opponentPlayer.isCorrect) Color(0xFFFF6B6B) else 
+                                           if (opponentPlayer.currentAnswer.isNotEmpty()) Color(0xFFFF9800) else Color(0xFFF5F5F5)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (opponentPlayer.isCorrect) "✅" else if (opponentPlayer.currentAnswer.isNotEmpty()) "⏳" else "⭕",
+                                fontSize = 16.sp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (currentQuestion?.type == QuestionType.WORD) {
+                                    // For words, show progress: "CA" or "CAT"
+                                    "Opp: ${if (opponentWordProgress.isNotEmpty()) opponentWordProgress else "..."}"
+                                } else {
+                                    "Opp: ${if (opponentPlayer.currentAnswer.isNotEmpty()) opponentPlayer.currentAnswer else "..."}"
+                                },
+                                color = if (opponentPlayer.isCorrect) Color.White else Color.Black,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
                 }
-            }
-        }
                 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 
-                // Test scoring mechanism (temporary for debugging)
-                
-                
+                // Question Progress - Centered below the letter
+                Text(
+                    text = "Question ${questionIndex + 1} of ${allQuestions.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    fontSize = 11.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
             }
         }
         
-        // Game Controls
+        // Camera Preview - Bigger
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
             shape = RoundedCornerShape(16.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.padding(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Question Progress
-                Text(
-                    text = "Question ${questionIndex + 1} of ${allQuestions.size}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-                
-                // Game Status
-                Text(
-                    text = when {
-                        localPlayer.isCorrect && opponentPlayer.isCorrect -> "Both correct! 🎉"
-                        localPlayer.isCorrect -> "You're winning! 🏆"
-                        opponentPlayer.isCorrect -> "Opponent ahead! ⚡"
-                        else -> "Keep going! 💪"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = when {
-                        localPlayer.isCorrect && opponentPlayer.isCorrect -> Color(0xFF4CAF50)
-                        localPlayer.isCorrect -> Color(0xFF2196F3)
-                        opponentPlayer.isCorrect -> Color(0xFFFF5722)
-                        else -> Color(0xFF757575)
-                    },
-                    fontWeight = FontWeight.Medium
-                )
+                // Real Camera Preview Area
+                Log.d("MultiplayerScreen", "Camera permission check: ${cameraState.isPermissionGranted}")
+                if (cameraState.isPermissionGranted) {
+                    CameraPreview(
+                        cameraState = cameraState,
+                        currentQuestion = currentQuestion,
+                        useFrontCamera = useFrontCamera,
+                        onSignDetected = { sign, confidence ->
+                            Log.d("MultiplayerScreen", "=== ON SIGN DETECTED ===")
+                            Log.d("MultiplayerScreen", "Sign: '$sign', Confidence: $confidence")
+                            
+                            onUpdateCameraState(cameraState.copy(
+                                lastDetectedSign = sign,
+                                confidence = confidence,
+                                isAnalyzing = true
+                            ))
+                            onUpdateLocalPlayer(localPlayer.copy(currentAnswer = sign))
+                            
+                            // Real-time sign detection and scoring
+                            if (confidence > 0.75f) {
+                                Log.d("MultiplayerScreen", "Confidence check passed - calling onAnswerSubmit")
+                                onAnswerSubmit(sign)
+                            } else {
+                                Log.d("MultiplayerScreen", "Confidence too low - not submitting answer")
+                            }
+                        },
+                        onAnalysisComplete = {
+                            onUpdateCameraState(cameraState.copy(isAnalyzing = false))
+                        },
+                        modelInterpreter = modelInterpreter,
+                        imageProcessor = imageProcessor,
+                        inputSize = inputSize
+                    )
+                } else {
+                    // Camera permission denied placeholder
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .background(Color.Red.copy(alpha = 0.1f), RoundedCornerShape(16.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("🚫", fontSize = 48.sp)
+                            Text(
+                                text = "Camera Permission Required",
+                                color = Color.Red,
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Essential Game Controls - Skip and Camera Switch (same style as EvaluationScreen)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // Skip Button
+            Card(
+                modifier = Modifier.weight(1f),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFF9800)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                shape = RoundedCornerShape(10.dp),
+                onClick = {
+                    soundEffects.playButtonClick()
+                    hapticFeedback.lightTap()
+                    onSkip()
+                }
+            ) {
+                Column(
+                    modifier = Modifier.padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("⏭️  Skip", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
             }
             
-            // Manual Controls
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Button(
-                    onClick = { 
-                        Log.d("MultiplayerScreen", "Manual next question clicked")
-                        onNextQuestion() 
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Next Question", color = Color.White)
+            // Camera Switch Button
+            Card(
+                modifier = Modifier.weight(1f),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF9C27B0)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                shape = RoundedCornerShape(10.dp),
+                onClick = {
+                    soundEffects.playButtonClick()
+                    hapticFeedback.lightTap()
+                    onCameraSwitch()
                 }
-                
-                Button(
-                    onClick = { 
-                        Log.d("MultiplayerScreen", "Reset game clicked - using next question instead")
-                        onNextQuestion() 
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5722)),
-                    shape = RoundedCornerShape(8.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("Skip Question", color = Color.White)
+                    Text(
+                        text = if (useFrontCamera) "📷  Back" else "📷  Front",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
                 }
             }
         }
@@ -1878,15 +2030,30 @@ fun FinalResultsScreen(
             }
         }
         
-        // Single continue button to return to main multiplayer screen
-        Button(
-            onClick = onBackToLobby,
-            modifier = Modifier
-                .fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-            shape = RoundedCornerShape(12.dp)
+        // Continue and Play Again buttons
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Continue", color = Color.White)
+            // Continue button
+            Button(
+                onClick = onBackToLobby,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Continue", color = Color.White)
+            }
+            
+            // Play Again button
+            Button(
+                onClick = onPlayAgain,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("🔄 Play Again", color = Color.White, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
@@ -1895,6 +2062,7 @@ fun FinalResultsScreen(
 fun CameraPreview(
     cameraState: CameraState,
     currentQuestion: GameQuestion?,
+    useFrontCamera: Boolean,
     onSignDetected: (String, Float) -> Unit,
     onAnalysisComplete: () -> Unit,
     modelInterpreter: Interpreter?,
@@ -1908,10 +2076,11 @@ fun CameraPreview(
     var handSignAnalyzer by remember { mutableStateOf<MultiplayerHandSignAnalyzer?>(null) }
     
     // CameraX setup: runs only when permission granted and model loaded
-    LaunchedEffect(cameraState.isPermissionGranted, modelInterpreter) {
+    LaunchedEffect(cameraState.isPermissionGranted, modelInterpreter, useFrontCamera) {
         Log.d("CameraPreview", "=== CAMERA SETUP ===")
         Log.d("CameraPreview", "Permission granted: ${cameraState.isPermissionGranted}")
         Log.d("CameraPreview", "Model loaded: ${modelInterpreter != null}")
+        Log.d("CameraPreview", "Use front camera: $useFrontCamera")
         if (!cameraState.isPermissionGranted || modelInterpreter == null) {
             Log.d("CameraPreview", "Skipping camera setup - missing permission or model")
             return@LaunchedEffect
@@ -1919,8 +2088,8 @@ fun CameraPreview(
 
         val provider = ProcessCameraProvider.getInstance(context).get()
         val preview = Preview.Builder().build().apply { setSurfaceProvider(previewView.surfaceProvider) }
-        val selector = CameraSelector.DEFAULT_FRONT_CAMERA
-        Log.d("CameraPreview", "Camera provider and preview created")
+        val selector = if (useFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+        Log.d("CameraPreview", "Camera provider and preview created, using ${if (useFrontCamera) "front" else "back"} camera")
 
         // ImageAnalysis: keep latest frames only and analyze on background executor
         val imageAnalyzer = ImageAnalysis.Builder()
@@ -1934,7 +2103,7 @@ fun CameraPreview(
             modelInterpreter = modelInterpreter,
             imageProcessor = imageProcessor,
             inputSize = inputSize,
-            useFrontCamera = true,
+            useFrontCamera = useFrontCamera,
             context = context,
             onPrediction = { prediction: String ->
                 Log.d("CameraPreview", "=== PREDICTION RECEIVED ===")
@@ -1981,11 +2150,11 @@ fun CameraPreview(
         }
     }
     
-    // Camera preview + overlay (with guide box and feedback overlay)
+    // Camera preview + overlay (with guide box and feedback overlay) - 300dp to fit buttons
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(360.dp)
+            .height(300.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(Color.Black),
         contentAlignment = Alignment.Center
@@ -2106,7 +2275,7 @@ class MultiplayerHandSignAnalyzer(
     private val numFeatures = 4 + numClasses // 31
     private val numDetections = 8400
     private val confThreshold = 0.3f // raw detection threshold
-    private val feedbackThreshold = 0.60f // FINAL confidence threshold (user requested 75%)
+    private val feedbackThreshold = 0.75f // FINAL confidence threshold (75%)
     private val iouThreshold = 0.5f
 
     // Reusable buffers to reduce allocations and GC pressure
@@ -2144,8 +2313,10 @@ class MultiplayerHandSignAnalyzer(
         }
 
         try {
-            // Handle rotation and flip for front camera
-            val rotationDegrees = if (useFrontCamera) 270 else 0
+            // Handle rotation and flip for front/back camera
+            // Front camera: 270 degrees rotation + horizontal flip
+            // Back camera: 90 degrees rotation (no flip needed)
+            val rotationDegrees = if (useFrontCamera) 270 else 90
             Log.d(TAG, "Converting image to bitmap with rotation: $rotationDegrees")
             var bitmap = image.toBitmap(rotationDegrees)
             Log.d(TAG, "Bitmap created successfully: ${bitmap.width}x${bitmap.height}")
@@ -2174,14 +2345,31 @@ class MultiplayerHandSignAnalyzer(
 
             // Run inference (output shape expected [1, numFeatures, numDetections])
             // Use synchronized block to prevent concurrent access
+            // Check interpreter is not null before using it
+            val interpreter = modelInterpreter
+            if (interpreter == null) {
+                image.close()
+                return
+            }
+            
             synchronized(interpreterLock) {
+                // Double-check after acquiring lock - interpreter might have been closed
+                if (modelInterpreter == null) {
+                    image.close()
+                    return
+                }
                 try {
                     Log.d(TAG, "Running model inference...")
-                    modelInterpreter.run(inputBuffer, outputArray3D)
+                    modelInterpreter!!.run(inputBuffer, outputArray3D)
                     Log.d(TAG, "Model inference completed successfully")
+                } catch (e: IllegalStateException) {
+                    // Interpreter was closed/released during inference
+                    Log.w(TAG, "Interpreter closed during inference", e)
+                    image.close()
+                    return
                 } catch (e: Exception) {
                     Log.e(TAG, "Error during model inference", e)
-                    handler.post { onPrediction("") }
+                    image.close()
                     return
                 }
             }
@@ -2237,6 +2425,7 @@ class MultiplayerHandSignAnalyzer(
             if (boundingBoxes.isEmpty()) {
                 Log.d(TAG, "No bounding boxes detected - returning empty prediction")
                 handler.post { onPrediction("") }
+                image.close()
                 return
             }
 
@@ -2250,17 +2439,37 @@ class MultiplayerHandSignAnalyzer(
             Log.d(TAG, "Best box: $bestBox")
             Log.d(TAG, "Final prediction: '$predictedLetter' (conf: ${bestBox?.cnf ?: 0f}, threshold: $feedbackThreshold)")
             handler.post { onPrediction(predictedLetter) }
+            // Close image after successful analysis
+            image.close()
 
     } catch (e: OutOfMemoryError) {
             Log.e(TAG, "Out of memory during analysis", e)
             // Force garbage collection
             System.gc()
             handler.post { onPrediction("") }
+        } catch (e: OutOfMemoryError) {
+            Log.e(TAG, "Out of memory during analysis", e)
+            // Force garbage collection
+            System.gc()
+            handler.post { onPrediction("") }
+        } catch (e: IllegalStateException) {
+            // Interpreter or camera was closed
+            Log.w(TAG, "Illegal state during analysis (likely closed)", e)
+            handler.post { onPrediction("") }
+        } catch (e: NullPointerException) {
+            // Something became null during analysis
+            Log.w(TAG, "Null pointer during analysis", e)
+            handler.post { onPrediction("") }
         } catch (e: Exception) {
             Log.e(TAG, "Error in analyze", e)
             handler.post { onPrediction("") }
         } finally {
-            image.close()
+            // Always close the image, even if there was an error
+            try {
+                image.close()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error closing image", e)
+            }
         }
     }
 

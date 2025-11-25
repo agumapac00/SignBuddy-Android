@@ -152,7 +152,7 @@ fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: 
                     )
                     Column {
                         Text(
-                            text = "Welcome, $teacherName! 👩‍🏫",
+                            text = "Welcome, $teacherName!",
                             style = MaterialTheme.typography.headlineMedium,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold
@@ -162,24 +162,11 @@ fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: 
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
                         )
-                        if (teacherUsername.isNotEmpty()) {
-                            Text(
-                                text = "@$teacherUsername",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                            )
-                        }
+
                     }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = "🚀 Quick Actions",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
 
                 // Enhanced STUDENT MANAGEMENT CARD
                 run {

@@ -139,8 +139,9 @@ class ProgressTrackingService {
                     
                     // ONLY update letters learned for evaluation mode
                     // Practice and tutorial don't count as "learned"
+                    // Cap at 26 (total letters in alphabet)
                     val newLettersLearned = if (sessionResult.mode == "evaluation") {
-                        it.lettersLearned + sessionResult.lettersCompleted
+                        (it.lettersLearned + sessionResult.lettersCompleted).coerceAtMost(26)
                     } else {
                         it.lettersLearned // Don't update letters learned for tutorial or practice
                     }

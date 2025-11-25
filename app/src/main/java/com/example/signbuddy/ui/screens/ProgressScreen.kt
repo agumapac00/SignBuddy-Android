@@ -176,7 +176,7 @@ fun ProgressScreen(navController: NavHostController, username: String) {
                         ) {
                             ProgressStatCard(
                                 title = "Letters Learned",
-                                value = "${studentStats!!.lettersLearned}",
+                                value = "${(studentStats!!.lettersLearned.coerceAtMost(26))}/26",
                                 emoji = "📚",
                                 color = Color(0xFF4ECDC4)
                             )
@@ -248,8 +248,9 @@ fun ProgressScreen(navController: NavHostController, username: String) {
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         
-                        // Simple progress visualization
-                        val progress = (studentStats!!.lettersLearned.toFloat() / 26f).coerceAtMost(1f)
+                        // Simple progress visualization - cap letters learned at 26
+                        val lettersLearned = studentStats!!.lettersLearned.coerceAtMost(26)
+                        val progress = (lettersLearned.toFloat() / 26f).coerceAtMost(1f)
                         
                         Box(
                             modifier = Modifier
@@ -274,7 +275,7 @@ fun ProgressScreen(navController: NavHostController, username: String) {
                         Spacer(modifier = Modifier.height(8.dp))
                         
                         Text(
-                            text = "Progress: ${(progress * 100).toInt()}% (${studentStats!!.lettersLearned}/26 letters)",
+                            text = "Progress: ${(progress * 100).toInt()}% ($lettersLearned/26 letters)",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                         )

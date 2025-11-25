@@ -163,16 +163,16 @@ fun ProfileScreen(username: String, navController: androidx.navigation.NavContro
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
 
-                    // Updated percentage logic: use lettersLearned/26 * 100
-                    val progressPercent = if (isLoading) null else ((studentStats?.lettersLearned?.toFloat() ?: 0f) / 26f * 100).coerceAtMost(100f).toInt()
+                    // Display letters learned as X/26 format
+                    val lettersLearned = if (isLoading) 0 else (studentStats?.lettersLearned ?: 0).coerceAtMost(26)
                     Text(
-                        text = progressPercent?.let { "$it%" } ?: "...",
+                        text = if (isLoading) "..." else "$lettersLearned/26",
                         style = MaterialTheme.typography.headlineMedium,
                         color = Color.White,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Progress 📈",
+                        text = "Letters Learned 📈",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White,
                         fontWeight = FontWeight.Medium
@@ -192,8 +192,11 @@ fun ProfileScreen(username: String, navController: androidx.navigation.NavContro
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
 
+                    // Display badges as X/8 format
+                    val badgesUnlocked = achievements.count { it.unlocked }
+                    val totalBadges = achievements.size
                     Text(
-                        text = "${achievements.count { it.unlocked }}",
+                        text = "$badgesUnlocked/$totalBadges",
                         style = MaterialTheme.typography.headlineMedium,
                         color = Color.White,
                         fontWeight = FontWeight.Bold
@@ -213,9 +216,14 @@ fun ProfileScreen(username: String, navController: androidx.navigation.NavContro
 
         ProfileCard("Level", if (isLoading) "Loading..." else "Level ${studentStats?.level ?: 1} ⭐⭐⭐", Icons.Default.Star, MaterialTheme.colorScheme.secondary)
 
-        // Updated ProgressCard and logic: (lettersLearned / 26) for the float progress, max 1f
-        val overallProgress = if (isLoading) 0f else (studentStats?.lettersLearned?.toFloat() ?: 0f) / 26f
-        ProgressCard(overallProgress.coerceAtMost(1f))
+        // Calculate overall progress as average of letters learned and badges unlocked
+        val lettersLearned = if (isLoading) 0 else (studentStats?.lettersLearned ?: 0).coerceAtMost(26)
+        val lettersProgress = lettersLearned.toFloat() / 26f
+        val badgesUnlocked = achievements.count { it.unlocked }
+        val totalBadges = achievements.size
+        val badgesProgress = if (totalBadges > 0) badgesUnlocked.toFloat() / totalBadges.toFloat() else 0f
+        val overallProgress = if (isLoading) 0f else (lettersProgress + badgesProgress) / 2f
+        ProgressCard(overallProgress.coerceAtMost(1f), lettersLearned, badgesUnlocked, totalBadges)
 
         // Logout Button
         Card(
@@ -326,7 +334,7 @@ fun ProfileCard(
 }
 
 @Composable
-fun ProgressCard(progress: Float) {
+fun ProgressCard(progress: Float, lettersLearned: Int = 0, badgesUnlocked: Int = 0, totalBadges: Int = 0) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -364,12 +372,16 @@ fun ProgressCard(progress: Float) {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
+                    text = "Letters: $lettersLearned/26 | Badges: $badgesUnlocked/$totalBadges",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
                     text = "Keep it up! You're improving 🎉",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-
             }
         }
     }
