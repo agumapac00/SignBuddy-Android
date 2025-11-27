@@ -58,11 +58,12 @@
         implementation("androidx.camera:camera-lifecycle:1.5.0")
         implementation("androidx.camera:camera-view:1.5.0")
 
-        // ✅ TensorFlow Lite (core + GPU + support + task vision)
+        // ✅ TensorFlow Lite (core + GPU + NNAPI + support + task vision)
         implementation("org.tensorflow:tensorflow-lite:2.14.0")
         implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")
         implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
         implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
+        implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.14.0")
 
         implementation("com.google.mediapipe:tasks-vision:0.10.14")
         implementation(libs.androidx.compose.foundation)

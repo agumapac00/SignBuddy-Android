@@ -1,32 +1,43 @@
 package com.example.signbuddy.ui.screens
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import android.media.AudioManager
+import android.media.ToneGenerator
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.signbuddy.data.FirestoreService
-import com.example.signbuddy.data.StudentProfile
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -38,169 +49,330 @@ fun SignBuddyUsernameScreen(navController: NavController) {
 
     val firestoreService = remember { FirestoreService() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val prefs = remember { context.getSharedPreferences("signbuddy_prefs", android.content.Context.MODE_PRIVATE) }
 
-    val gradientBackground = Brush.verticalGradient(
-        colors = listOf(
-            Color(0xFFFFE0B2), // Warm orange
-            Color(0xFFFFF8E1), // Cream
-            Color(0xFFE8F5E8), // Light green
-            Color(0xFFE3F2FD)  // Light blue
-        )
+    // Sound effects
+    val toneGenerator = remember { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100) }
+    
+    DisposableEffect(Unit) {
+        onDispose { toneGenerator.release() }
+    }
+
+    // Fun animations for kids
+    val infiniteTransition = rememberInfiniteTransition(label = "fun")
+    
+    // Bouncing mascot
+    val bounceOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -20f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500, easing = EaseInOutQuad),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bounce"
+    )
+    
+    // Wiggling stars
+    val wiggleAngle by infiniteTransition.animateFloat(
+        initialValue = -10f,
+        targetValue = 10f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(300, easing = EaseInOutQuad),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "wiggle"
+    )
+    
+    // Rainbow color shift
+    val colorShift by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rainbow"
+    )
+    
+    // Sparkle alpha
+    val sparkleAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, easing = EaseInOutQuad),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "sparkle"
     )
 
-    Surface(
+    // Entry animation
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(100)
+        visible = true
+    }
+
+    // Kindergarten-friendly bright colors
+    val skyBlue = Color(0xFF87CEEB)
+    val sunYellow = Color(0xFFFFD93D)
+    val grassGreen = Color(0xFF6BCB77)
+    val candyPink = Color(0xFFFF6B9D)
+    val cloudWhite = Color(0xFFFFFBF0)
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(gradientBackground),
-        color = Color.Transparent
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        skyBlue,
+                        Color(0xFFB4E4FF),
+                        cloudWhite
+                    )
+                )
+            )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(22.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            // Enhanced animated student logo area
-            Box(
+        // Floating clouds decoration
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Cloud 1
+            Text(
+                "☁️",
+                fontSize = 60.sp,
                 modifier = Modifier
-                    .size(140.dp)
-                    .background(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                Color(0xFF4ECDC4).copy(alpha = 0.3f),
-                                Color(0xFF44A08D).copy(alpha = 0.2f)
-                            )
-                        ),
-                        shape = RoundedCornerShape(70.dp)
-                    ),
-                contentAlignment = Alignment.Center
+                    .offset(x = 20.dp, y = 50.dp)
+                    .graphicsLayer { alpha = 0.7f }
+            )
+            // Cloud 2
+            Text(
+                "☁️",
+                fontSize = 45.sp,
+                modifier = Modifier
+                    .offset(x = 280.dp, y = 30.dp)
+                    .graphicsLayer { alpha = 0.6f }
+            )
+            // Sun
+            Text(
+                "🌞",
+                fontSize = 50.sp,
+                modifier = Modifier
+                    .offset(x = 300.dp, y = 80.dp)
+                    .rotate(wiggleAngle)
+            )
+            // Floating stars
+            listOf(
+                Triple(50.dp, 150.dp, "⭐"),
+                Triple(320.dp, 200.dp, "🌟"),
+                Triple(30.dp, 400.dp, "✨"),
+                Triple(340.dp, 450.dp, "💫")
+            ).forEach { (x, y, emoji) ->
+                Text(
+                    emoji,
+                    fontSize = 24.sp,
+                    modifier = Modifier
+                        .offset(x = x, y = y)
+                        .rotate(wiggleAngle)
+                        .graphicsLayer { alpha = sparkleAlpha }
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(800)) + slideInVertically(
+                initialOffsetY = { 100 },
+                animationSpec = tween(800, easing = EaseOutBounce)
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
+                // Bouncing mascot hand
                 Box(
                     modifier = Modifier
-                        .size(100.dp)
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.8f),
-                                    Color.White.copy(alpha = 0.4f)
-                                )
-                            ),
-                            shape = RoundedCornerShape(50.dp)
-                        ),
+                        .offset(y = bounceOffset.dp)
+                        .size(140.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.School,
-                        contentDescription = "Student Icon",
-                        modifier = Modifier.size(60.dp),
-                        tint = Color(0xFF2E7D32)
+                    // Glow circle
+                    Box(
+                        modifier = Modifier
+                            .size(140.dp)
+                            .background(
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        sunYellow.copy(alpha = 0.5f),
+                                        Color.Transparent
+                                    )
+                                ),
+                                CircleShape
+                            )
+                    )
+                    // Main emoji
+                    Text(
+                        "🤟",
+                        fontSize = 80.sp,
+                        modifier = Modifier.rotate(wiggleAngle / 2)
                     )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            Text(
-                text = "Student Login 🎓",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Welcome back! Let's continue learning ASL! 🌟",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(22.dp))
-
-            OutlinedTextField(
-                value = studentUsername,
-                onValueChange = { if (it.length <= 20) studentUsername = it },
-                label = { Text("Student Username 🆔") },
-                placeholder = { Text("Enter your username...") },
-                leadingIcon = { Icon(imageVector = Icons.Filled.Person, contentDescription = null) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-                shape = RoundedCornerShape(18.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                    focusedLabelColor = MaterialTheme.colorScheme.primary,
-                    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                // Fun title with rainbow effect
+                Text(
+                    text = "SignBuddy",
+                    fontSize = 44.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF2D5A7B),
+                    textAlign = TextAlign.Center
                 )
-            )
-
-            // Error message
-            if (showError) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
-                    shape = RoundedCornerShape(12.dp)
+                
+                // Subtitle with emojis
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
                 ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Text("🎮", fontSize = 20.sp, modifier = Modifier.rotate(-wiggleAngle))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Learn Sign Language!",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF5D8AA8)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("🎮", fontSize = 20.sp, modifier = Modifier.rotate(wiggleAngle))
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Fun input card
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(12.dp, RoundedCornerShape(28.dp)),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(
-                            text = "⚠️ ",
-                            style = MaterialTheme.typography.titleMedium
+                        // Label with emoji
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        ) {
+                            Text("👤", fontSize = 24.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "What's your name?",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2D5A7B)
+                            )
+                        }
+                        
+                        OutlinedTextField(
+                            value = studentUsername,
+                            onValueChange = { 
+                                if (it.length <= 15) {
+                                    studentUsername = it
+                                    showError = false
+                                }
+                            },
+                            placeholder = { Text("Type here...", color = Color.Gray) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onDone = { focusManager.clearFocus() }
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = grassGreen,
+                                unfocusedBorderColor = Color(0xFFE0E0E0),
+                                focusedContainerColor = Color(0xFFF8FFF8),
+                                unfocusedContainerColor = Color(0xFFFAFAFA)
+                            )
                         )
-                        Text(
-                            text = errorMessage,
-                            color = Color(0xFFD32F2F),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+
+                        // Error message
+                        AnimatedVisibility(
+                            visible = showError,
+                            enter = fadeIn() + expandVertically(),
+                            exit = fadeOut() + shrinkVertically()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                                    .background(
+                                        Color(0xFFFFE5E5),
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("😅", fontSize = 20.sp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    errorMessage,
+                                    color = Color(0xFFD32F2F),
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
                     }
                 }
-                Spacer(modifier = Modifier.height(12.dp))
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
-            run {
-                val isrc = MutableInteractionSource()
-                val pressed by isrc.collectIsPressedAsState()
-                val scale by animateFloatAsState(
-                    targetValue = if (pressed) 0.96f else 1f,
-                    animationSpec = tween(100),
-                    label = "loginScale"
+                // Big colorful Play button
+                val playInteraction = remember { MutableInteractionSource() }
+                val playPressed by playInteraction.collectIsPressedAsState()
+                val playScale by animateFloatAsState(
+                    targetValue = if (playPressed) 0.9f else 1f,
+                    animationSpec = spring(dampingRatio = 0.4f),
+                    label = "playScale"
                 )
+                
                 Button(
                     onClick = { 
+                        toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
                         if (studentUsername.isBlank()) {
                             showError = true
-                            errorMessage = "Please enter your username"
+                            errorMessage = "Please type your name!"
                         } else {
                             scope.launch {
                                 isLoading = true
                                 showError = false
+                                focusManager.clearFocus()
                                 
-                                // Find student by username
                                 firestoreService.findStudentByUsername(studentUsername)
                                     .onSuccess { studentProfile ->
                                         if (studentProfile != null) {
-                                            // Update login streak
+                                            prefs.edit().putString("logged_in_username", studentProfile.username).apply()
                                             firestoreService.updateLoginStreak(studentUsername)
-                                                .onFailure { error ->
-                                                    android.util.Log.e("SignBuddyUsernameScreen", "Failed to update login streak", error)
-                                                }
-                                            // Student found, navigate to dashboard (Home tab)
+                                            toneGenerator.startTone(ToneGenerator.TONE_PROP_ACK, 300)
                                             navController.navigate("studentDashboard/${studentProfile.username}?tab=0")
                                         } else {
                                             showError = true
-                                            errorMessage = "Username not found. Please register first."
+                                            errorMessage = "Name not found! Try registering first 📝"
+                                            toneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 200)
                                         }
                                     }
-                                    .onFailure { exception ->
+                                    .onFailure {
                                         showError = true
-                                        errorMessage = "Error: ${exception.message}"
+                                        errorMessage = "Oops! Something went wrong 😢"
                                     }
                                 isLoading = false
                             }
@@ -208,133 +380,108 @@ fun SignBuddyUsernameScreen(navController: NavController) {
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp)
-                        .graphicsLayer(scaleX = scale, scaleY = scale),
-                    shape = RoundedCornerShape(18.dp),
+                        .height(64.dp)
+                        .scale(playScale),
+                    shape = RoundedCornerShape(20.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
                     contentPadding = PaddingValues(),
-                    interactionSource = isrc,
+                    interactionSource = playInteraction,
                     enabled = !isLoading
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.primary,
-                                        MaterialTheme.colorScheme.secondary
-                                    )
+                                Brush.horizontalGradient(
+                                    colors = listOf(grassGreen, Color(0xFF4CAF50))
                                 ),
-                                shape = RoundedCornerShape(18.dp)
+                                RoundedCornerShape(20.dp)
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         if (isLoading) {
                             CircularProgressIndicator(
                                 color = Color.White,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(32.dp),
+                                strokeWidth = 3.dp
                             )
                         } else {
-                            Text(
-                                text = "Let's Learn! 🚀",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("▶️", fontSize = 28.sp)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    "Let's Play!",
+                                    fontSize = 24.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
 
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Register button
+                val registerInteraction = remember { MutableInteractionSource() }
+                val registerPressed by registerInteraction.collectIsPressedAsState()
+                val registerScale by animateFloatAsState(
+                    targetValue = if (registerPressed) 0.9f else 1f,
+                    animationSpec = spring(dampingRatio = 0.4f),
+                    label = "registerScale"
+                )
+                
+                Button(
+                    onClick = { 
+                        toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+                        navController.navigate("studentRegister") 
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .scale(registerScale),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                    contentPadding = PaddingValues(),
+                    interactionSource = registerInteraction
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(candyPink, Color(0xFFFF8FAB))
                                 ),
+                                RoundedCornerShape(20.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("📝", fontSize = 22.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "New Here? Join Us!",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // Register Button
-            val registerInteractionSource = remember { MutableInteractionSource() }
-            val registerPressed by registerInteractionSource.collectIsPressedAsState()
-            val registerScale by animateFloatAsState(
-                targetValue = if (registerPressed) 0.96f else 1f,
-                animationSpec = tween(100),
-                label = "registerScale"
-            )
-            Button(
-                onClick = { navController.navigate("studentRegister") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .graphicsLayer(scaleX = registerScale, scaleY = registerScale),
-                shape = RoundedCornerShape(18.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                contentPadding = PaddingValues(),
-                interactionSource = registerInteractionSource
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            brush = Brush.horizontalGradient(
-                                colors = listOf(
-                                    Color(0xFF4ECDC4),
-                                    Color(0xFF44A08D)
-                                )
-                            ),
-                            shape = RoundedCornerShape(18.dp)
-                        ),
-                    contentAlignment = Alignment.Center
+                // Teacher login (smaller)
+                TextButton(
+                    onClick = { 
+                        toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+                        navController.navigate("teacherLogin") 
+                    }
                 ) {
                     Text(
-                        text = "Register 📝",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = Color.White
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Teacher Login Button
-            val teacherInteractionSource = remember { MutableInteractionSource() }
-            val teacherPressed by teacherInteractionSource.collectIsPressedAsState()
-            val teacherScale by animateFloatAsState(
-                targetValue = if (teacherPressed) 0.95f else 1f,
-                animationSpec = tween(100),
-                label = "teacherButton"
-            )
-            Button(
-                onClick = { navController.navigate("teacherLogin") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .graphicsLayer(scaleX = teacherScale, scaleY = teacherScale),
-                shape = RoundedCornerShape(18.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                contentPadding = PaddingValues(),
-                interactionSource = teacherInteractionSource
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            brush = Brush.horizontalGradient(
-                                colors = listOf(
-                                    Color(0xFFFF6B6B).copy(alpha = 0.8f),
-                                    Color(0xFFFF8E53).copy(alpha = 0.6f)
-                                )
-                            ),
-                            shape = RoundedCornerShape(18.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "I'm a Teacher 👩‍🏫",
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold
-                        )
+                        "👩‍🏫 I'm a Teacher",
+                        fontSize = 14.sp,
+                        color = Color(0xFF5D8AA8)
                     )
                 }
             }

@@ -31,8 +31,6 @@ import com.example.signbuddy.ui.screens.EvaluationTestScreen
 import com.example.signbuddy.ui.screens.LeaderboardScreen
 import com.example.signbuddy.ui.screens.MultiplayerScreen
 import com.example.signbuddy.ui.screens.PracticeScreen
-import com.example.signbuddy.ui.screens.TeacherLoginScreen
-import com.example.signbuddy.ui.screens.teacher.TeacherDashboardScreen
 import com.example.signbuddy.ui.screens.teacher.TeacherCreateQuizScreen
 import com.example.signbuddy.ui.screens.teacher.TeacherAssignQuizScreen
 import com.example.signbuddy.ui.screens.teacher.TeacherClassPerformanceScreen
@@ -50,7 +48,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 🔹 Ask for camera permission once when activity starts
+        // Ask for camera permission once when activity starts
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -66,10 +64,16 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     val authViewModel = remember { AuthViewModel() }
                     val multiplayerViewModel = remember { MultiplayerViewModel() }
+                    
+                    // Check for saved student session (no auto-logout)
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val prefs = remember { context.getSharedPreferences("signbuddy_prefs", android.content.Context.MODE_PRIVATE) }
+                    val savedUsername = remember { prefs.getString("logged_in_username", null) }
+                    val startDest = if (!savedUsername.isNullOrEmpty()) "studentDashboard/$savedUsername?tab=0" else "login"
 
                     AnimatedNavHost(
                         navController = navController,
-                        startDestination = "login",
+                        startDestination = startDest,
                         enterTransition = {
                             fadeIn(animationSpec = tween(220)) + scaleIn(initialScale = 0.98f, animationSpec = tween(220))
                         },
@@ -136,7 +140,6 @@ class MainActivity : ComponentActivity() {
                         composable("teacher/students/add") {
                             TeacherAddStudentScreen(navController = navController, authViewModel = authViewModel)
                         }
-
 
                         // Student dashboard (with username argument)
                         composable(

@@ -20,6 +20,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -70,12 +72,11 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Kindergarten-friendly gradient
+    // Kindergarten-friendly bright colors
     val gradient = Brush.verticalGradient(colors = listOf(
-        Color(0xFFFFE0B2), // Warm orange
-        Color(0xFFFFF8E1), // Cream
-        Color(0xFFE8F5E8), // Light green
-        Color(0xFFE3F2FD)  // Light blue
+        Color(0xFF90EE90), // Light green
+        Color(0xFFB8F5B8), // Pale green
+        Color(0xFFF0FFF0)  // Honeydew
     ))
     
     // Gamification elements
@@ -142,7 +143,7 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
         }
     }
 
-    // Use 640 if that's your trained imgsz; change to 320 if you want faster inference
+    // Revert to 640 for this model to maximize detection accuracy
     val inputSize = 640
     val imageProcessor = remember {
         ImageProcessor.Builder()
@@ -255,7 +256,7 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
 
         // ImageAnalysis: keep latest frames only and analyze on background executor
         val imageAnalyzer = ImageAnalysis.Builder()
-            .setTargetResolution(Size(inputSize, inputSize))
+            .setTargetResolution(Size(320, 320))
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
 
@@ -270,7 +271,8 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
             onPrediction = { prediction: String ->
                 // update UI states based on prediction; guard while feedback is visible
                 currentPrediction = prediction
-                if (!showFeedback && prediction.isNotEmpty()) {
+                // Only process if not already showing feedback (prevents double detection)
+                if (!showFeedback && prediction.isNotEmpty() && isPracticing) {
                     Log.d("PracticeScreen", "Prediction received: '$prediction', target: '$targetLetter'")
                     if (prediction.uppercase() == targetLetter.uppercase()) {
                         feedbackCorrect = true
@@ -300,11 +302,19 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
         }
     }
 
-    // UI (kept intact from your original)
+    // Kindergarten-friendly UI
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("🤟 Practice Mode", style = MaterialTheme.typography.titleLarge) },
+                title = { 
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🤟", fontSize = 26.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Practice!", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("🎯", fontSize = 22.sp)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = {
                         shouldStopAnalysis = true
@@ -319,11 +329,11 @@ fun PracticeScreen(navController: NavController? = null, username: String = "") 
                             showLevelSelection = true
                         }
                     }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Text("⬅️", fontSize = 26.sp)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
+                    containerColor = Color(0xFF4CAF50),
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White
                 )
@@ -525,11 +535,23 @@ fun getRandomTarget(level: String): String {
     return letters.random().toString()
 }
 
-// Load TFLite model from assets (CPU-only)
+// Load TFLite model from assets with NNAPI acceleration
 private fun loadPracticeModel(context: Context): Interpreter? {
     return try {
         val model = loadModelFile(context, "asl_model.tflite")
-        Interpreter(model).also {
+        // Use NNAPI delegate for hardware acceleration (faster inference)
+        val options = Interpreter.Options().apply {
+            setNumThreads(4)
+            // Try NNAPI first for hardware acceleration
+            try {
+                val nnApiDelegate = org.tensorflow.lite.nnapi.NnApiDelegate()
+                addDelegate(nnApiDelegate)
+                Log.d("PracticeScreen", "NNAPI delegate enabled")
+            } catch (e: Exception) {
+                Log.d("PracticeScreen", "NNAPI not available, using CPU")
+            }
+        }
+        Interpreter(model, options).also {
             val inputShape = it.getInputTensor(0).shape()
             val outputShape = it.getOutputTensor(0).shape()
             Log.d("PracticeScreen", "Model loaded. Input: ${inputShape.contentToString()}, Output: ${outputShape.contentToString()}")
@@ -594,7 +616,7 @@ class HandSignAnalyzer(
 ) : ImageAnalysis.Analyzer {
     private val handler = Handler(Looper.getMainLooper())
     private var lastAnalysisTime = 0L
-    private val analysisInterval = 300L // ms
+    private val analysisInterval = 1500L // ms - analyze every 1.5 seconds for smooth camera
     private val TAG = "HandSignAnalyzer"
     // ASL labels: 0-25 A-Z, 26 nothing
     private val labels = listOf("A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "nothing")
@@ -602,9 +624,13 @@ class HandSignAnalyzer(
     private val numClasses = 27
     private val numFeatures = 4 + numClasses // 31
     private val numDetections = 8400
-    private val confThreshold = 0.3f // raw detection threshold
-    private val feedbackThreshold = 0.75f // FINAL confidence threshold (75%)
+    private val confThreshold = 0.30f // raw detection threshold (filter noise early)
+    private val feedbackThreshold = 0.70f // FINAL confidence threshold (70%)
     private val iouThreshold = 0.5f
+    
+    // Single high-confidence detection (no consecutive required at 70%+)
+    @Volatile private var lastPredictionTime = 0L
+    private val predictionCooldown = 2500L // 2.5 sec cooldown after prediction to avoid double
 
     // Reusable buffers to reduce allocations and GC pressure
     private val inputBuffer = ByteBuffer.allocateDirect(1 * inputSize * inputSize * 3 * 4).apply {
@@ -799,8 +825,19 @@ class HandSignAnalyzer(
 
             // Pick highest conf box
             val bestBox = selectedBoxes.maxByOrNull { it.cnf }
-            val predictedLetter = if (bestBox != null && bestBox.cnf > feedbackThreshold) bestBox.clsName else ""
-            Log.d(TAG, "Final prediction: $predictedLetter (conf: ${bestBox?.cnf ?: 0f})")
+            
+            // Check if we're in cooldown period (avoid double prediction)
+            val now = System.currentTimeMillis()
+            val inCooldown = (now - lastPredictionTime) < predictionCooldown
+            
+            val predictedLetter = if (bestBox != null && bestBox.cnf >= feedbackThreshold && !inCooldown) {
+                lastPredictionTime = now // Start cooldown
+                Log.d(TAG, "Final prediction: ${bestBox.clsName} (conf: ${bestBox.cnf})")
+                bestBox.clsName
+            } else {
+                ""
+            }
+            
             handler.post { onPrediction(predictedLetter) }
             // Close image after successful analysis
             image.close()
@@ -895,7 +932,7 @@ data class LevelOption(
     val description: String
 )
 
-// Screen 1: Level Selection Screen - Compact, fits on one page
+// Screen 1: Level Selection Screen - Kindergarten-friendly, fits on one page
 @Composable
 fun LevelSelectionScreen(
     selectedLevel: String,
@@ -904,136 +941,156 @@ fun LevelSelectionScreen(
     onBackToLessons: () -> Unit,
     gradient: Brush
 ) {
-    Column(
+    // Fun animations
+    val infiniteTransition = rememberInfiniteTransition(label = "fun")
+    val bounceOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -10f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500, easing = EaseInOutQuad),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bounce"
+    )
+    val wiggleAngle by infiniteTransition.animateFloat(
+        initialValue = -5f,
+        targetValue = 5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(300),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "wiggle"
+    )
+    val sparkleAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(400),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "sparkle"
+    )
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(gradient)
-            .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Start
-        ) {
+        // Decorations
+        Box(modifier = Modifier.fillMaxSize()) {
+            Text("🌞", fontSize = 45.sp, modifier = Modifier.offset(x = 300.dp, y = 30.dp).graphicsLayer { rotationZ = wiggleAngle })
+            Text("☁️", fontSize = 35.sp, modifier = Modifier.offset(x = 20.dp, y = 40.dp).graphicsLayer { alpha = 0.6f })
+            Text("⭐", fontSize = 22.sp, modifier = Modifier.offset(x = 40.dp, y = 200.dp).graphicsLayer { alpha = sparkleAlpha })
+            Text("🌟", fontSize = 20.sp, modifier = Modifier.offset(x = 340.dp, y = 350.dp).graphicsLayer { alpha = sparkleAlpha })
+            Text("🦋", fontSize = 26.sp, modifier = Modifier.offset(x = 30.dp, y = 500.dp).graphicsLayer { rotationZ = wiggleAngle })
         }
-        Spacer(modifier = Modifier.height(4.dp))
-        // Compact Header
-        AnimatedMascot(
-            isHappy = true,
-            isCelebrating = false,
-            size = 50
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "🤟 Practice Mode",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "Choose your challenge level!",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
-        )
-        Spacer(modifier = Modifier.height(20.dp))
-        
-        // Compact Level selection cards
-        Text(
-            text = "🎯 Select Difficulty",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        
+
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
+            // Bouncing mascot
+            Box(
+                modifier = Modifier
+                    .offset(y = bounceOffset.dp)
+                    .size(100.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("🤟", fontSize = 70.sp, modifier = Modifier.graphicsLayer { rotationZ = wiggleAngle / 2 })
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = "Pick Your Level!",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color(0xFF2E7D32)
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("🎮", fontSize = 18.sp, modifier = Modifier.graphicsLayer { rotationZ = -wiggleAngle })
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("How hard do you want?", fontSize = 16.sp, color = Color(0xFF4CAF50))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("🎮", fontSize = 18.sp, modifier = Modifier.graphicsLayer { rotationZ = wiggleAngle })
+            }
+            
+            Spacer(modifier = Modifier.height(20.dp))
+            
+            // Level cards - kindergarten style
             listOf(
-                LevelOption("Easy", "🟢", Color(0xFF4CAF50), "Perfect for beginners!"),
-                LevelOption("Average", "🟡", Color(0xFFFF9800), "Ready for a challenge?"),
-                LevelOption("Difficult", "🔴", Color(0xFFF44336), "Master level!")
-            ).forEach { (lvl, emoji, color, description) ->
+                LevelOption("Easy", "🐣", Color(0xFF81C784), "For beginners!"),
+                LevelOption("Average", "🐥", Color(0xFFFFB74D), "Getting better!"),
+                LevelOption("Difficult", "🦅", Color(0xFFE57373), "Super hard!")
+            ).forEachIndexed { index, (lvl, emoji, color, description) ->
                 val isSelected = lvl == selectedLevel
+                val cardScale by animateFloatAsState(
+                    targetValue = if (isSelected) 1.05f else 1f,
+                    animationSpec = spring(dampingRatio = 0.5f),
+                    label = "scale$index"
+                )
+                
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(75.dp),
+                        .height(85.dp)
+                        .padding(vertical = 4.dp)
+                        .graphicsLayer { scaleX = cardScale; scaleY = cardScale },
                     colors = CardDefaults.cardColors(
-                        containerColor = if (isSelected) color else color.copy(alpha = 0.1f)
+                        containerColor = if (isSelected) color else Color.White
                     ),
                     elevation = CardDefaults.cardElevation(
-                        defaultElevation = if (isSelected) 10.dp else 4.dp
+                        defaultElevation = if (isSelected) 12.dp else 4.dp
                     ),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(24.dp),
                     onClick = { onLevelSelected(lvl) }
                 ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(14.dp),
+                        modifier = Modifier.fillMaxSize().padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(emoji, fontSize = 32.sp)
+                            Text(emoji, fontSize = 40.sp)
                             Column {
                                 Text(
-                                    text = lvl,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = if (isSelected) Color.White else color,
-                                    fontWeight = FontWeight.Bold
+                                    lvl,
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) Color.White else color
                                 )
                                 Text(
-                                    text = description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (isSelected) Color.White.copy(alpha = 0.9f) else Color(0xFF666666),
-                                    fontSize = 11.sp
+                                    description,
+                                    fontSize = 13.sp,
+                                    color = if (isSelected) Color.White.copy(alpha = 0.9f) else Color.Gray
                                 )
                             }
                         }
                         if (isSelected) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = "Selected",
-                                tint = Color.White,
-                                modifier = Modifier.size(28.dp)
-                            )
+                            Text("✅", fontSize = 32.sp)
                         }
                     }
                 }
             }
-        }
-        
-        Spacer(modifier = Modifier.height(20.dp))
-        
-        // Continue button
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            shape = RoundedCornerShape(16.dp),
-            onClick = onContinue
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+            
+            Spacer(modifier = Modifier.height(20.dp))
+            
+            // Start button
+            Button(
+                onClick = onContinue,
+                modifier = Modifier.fillMaxWidth().height(65.dp),
+                shape = RoundedCornerShape(22.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
             ) {
-                Text(
-                    text = "Continue ➡️",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("▶️", fontSize = 28.sp)
+                Spacer(modifier = Modifier.width(12.dp))
+                Text("Let's Go!", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
             }
         }
     }

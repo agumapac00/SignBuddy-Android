@@ -1,115 +1,108 @@
 package com.example.signbuddy.ui.screens.teacher
 
+import android.media.AudioManager
+import android.media.ToneGenerator
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.ui.text.font.FontWeight
-import com.example.signbuddy.ui.components.*
-import com.example.signbuddy.viewmodels.AuthViewModel
 import com.example.signbuddy.services.TeacherService
+import com.example.signbuddy.viewmodels.AuthViewModel
 import com.google.firebase.auth.FirebaseAuth
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: AuthViewModel? = null) {
     val auth = FirebaseAuth.getInstance()
-    val gradient = Brush.verticalGradient(
-        colors = listOf(
-            Color(0xFFFFE0B2), // Warm orange
-            Color(0xFFFFF8E1), // Cream
-            Color(0xFFE8F5E8), // Light green
-            Color(0xFFE3F2FD)  // Light blue
-        )
-    )
+    val context = LocalContext.current
+    val toneGenerator = remember { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100) }
     
-    // Additional background elements
-    val accentGradient = Brush.radialGradient(
-        colors = listOf(
-            Color(0xFFFF6B6B).copy(alpha = 0.1f),
-            Color(0xFF4ECDC4).copy(alpha = 0.1f),
-            Color.Transparent
-        ),
-        radius = 800f
+    DisposableEffect(Unit) {
+        onDispose { toneGenerator.release() }
+    }
+
+    // Animations
+    val infiniteTransition = rememberInfiniteTransition(label = "fun")
+    val bounceOffset by infiniteTransition.animateFloat(
+        initialValue = 0f, targetValue = -8f,
+        animationSpec = infiniteRepeatable(tween(500, easing = EaseInOutQuad), RepeatMode.Reverse), label = "bounce"
+    )
+    val wiggleAngle by infiniteTransition.animateFloat(
+        initialValue = -5f, targetValue = 5f,
+        animationSpec = infiniteRepeatable(tween(300), RepeatMode.Reverse), label = "wiggle"
+    )
+    val sparkleAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.5f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(400), RepeatMode.Reverse), label = "sparkle"
     )
 
-    val soundEffects = rememberSoundEffects()
-    val hapticFeedback = rememberHapticFeedback()
-    var showConfetti by remember { mutableStateOf(false) }
+    val gradient = Brush.verticalGradient(
+        colors = listOf(Color(0xFFFFB6B6), Color(0xFFFFD5D5), Color(0xFFFFF5F5))
+    )
+
     var showLogoutDialog by remember { mutableStateOf(false) }
-    
-    // Teacher info state
     var teacherName by remember { mutableStateOf("Teacher") }
-    var teacherUsername by remember { mutableStateOf("") }
     var teacherId by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
     val teacherService = remember { TeacherService() }
-    
-    // Class statistics state
     var classStats by remember { mutableStateOf(TeacherService.ClassStatistics(0, 0, 0f, 0)) }
     var isLoadingStats by remember { mutableStateOf(true) }
     
-    // Fetch teacher info and class statistics when screen loads
     LaunchedEffect(Unit) {
-        // Check if user is logged in
         val currentUser = auth.currentUser
         if (currentUser == null && authViewModel != null) {
-            // User is not logged in, navigate to login
-            navController?.navigate("teacherLogin") {
-                popUpTo(0) { inclusive = true }
-            }
+            navController?.navigate("teacherLogin") { popUpTo(0) { inclusive = true } }
             return@LaunchedEffect
         }
         
-        if (authViewModel != null) {
-            try {
-            val teacherInfo = authViewModel.getCurrentTeacherInfo()
-            teacherInfo?.let { info ->
-                teacherName = info["displayName"] as? String ?: "Teacher"
-                teacherUsername = info["username"] as? String ?: ""
-                teacherId = info["uid"] as? String ?: ""
-                
-                // Fetch class statistics
-                if (teacherId.isNotEmpty()) {
-                    try {
-                        classStats = teacherService.getClassStatistics(teacherId)
-                    } catch (e: Exception) {
-                        // Handle error - keep default values
-                    }
-                    isLoadingStats = false
-                }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("TeacherDashboard", "Error getting teacher info", e)
+        authViewModel?.getCurrentTeacherInfo()?.let { info ->
+            teacherName = info["displayName"] as? String ?: "Teacher"
+            teacherId = info["uid"] as? String ?: ""
+            
+            if (teacherId.isNotEmpty()) {
+                try { classStats = teacherService.getClassStatistics(teacherId) } catch (_: Exception) {}
+                isLoadingStats = false
             }
         }
     }
 
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { delay(100); visible = true }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("👩‍🏫 Teacher Dashboard", style = MaterialTheme.typography.titleLarge) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("👩‍🏫", fontSize = 26.sp, modifier = Modifier.rotate(wiggleAngle))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Teacher Hub", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = Color.White,
-                    actionIconContentColor = Color.White
+                    containerColor = Color(0xFFE57373),
+                    titleContentColor = Color.White
                 )
             )
         }
@@ -120,476 +113,175 @@ fun TeacherDashboardScreen(navController: NavController? = null, authViewModel: 
                 .background(gradient)
                 .padding(inner)
         ) {
-            // Enhanced background with layered gradients
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(accentGradient)
-            )
-            if (showConfetti) {
-                com.example.signbuddy.ui.screens.teacher.components.ConfettiOverlay(
-                    visible = showConfetti,
-                    onFinished = { showConfetti = false }
-                )
-            }
+            // Decorations
+            Text("📚", fontSize = 35.sp, modifier = Modifier.offset(x = 300.dp, y = 30.dp).rotate(wiggleAngle))
+            Text("⭐", fontSize = 22.sp, modifier = Modifier.offset(x = 30.dp, y = 100.dp).graphicsLayer { alpha = sparkleAlpha })
+            Text("🍎", fontSize = 28.sp, modifier = Modifier.offset(x = 320.dp, y = 450.dp).rotate(-wiggleAngle))
+            Text("✏️", fontSize = 24.sp, modifier = Modifier.offset(x = 20.dp, y = 500.dp).rotate(wiggleAngle))
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(20.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+            AnimatedVisibility(
+                visible = visible,
+                enter = fadeIn(tween(600)) + slideInVertically(initialOffsetY = { 50 })
             ) {
-                // Enhanced Header
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    AnimatedMascot(
-                        isHappy = true,
-                        isCelebrating = false,
-                        size = 60
-                    )
-                    Column {
-                        Text(
-                            text = "Welcome, $teacherName!",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Manage your classroom and help students learn ASL! 🌟",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
-                        )
-
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Enhanced STUDENT MANAGEMENT CARD
-                run {
-                    val cardIs = MutableInteractionSource()
-                    val pressed by cardIs.collectIsPressedAsState()
-                    val scale by animateFloatAsState(targetValue = if (pressed) 0.99f else 1f, label = "cardScale1")
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .graphicsLayer(scaleX = scale, scaleY = scale),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF4ECDC4)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                        interactionSource = cardIs,
-                        onClick = {}
-                    ) {
-                        Column(
-                            Modifier.padding(20.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Text("👥", style = MaterialTheme.typography.headlineLarge)
-                                Text(
-                                    text = "Student Management",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Text(
-                                text = "View, add, and remove students from your class",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = Color.White.copy(alpha = 0.9f)
-                            )
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                val chipViewIs = MutableInteractionSource()
-                                val chipViewPressed by chipViewIs.collectIsPressedAsState()
-                                val chipViewScale by animateFloatAsState(
-                                    targetValue = if (chipViewPressed) 0.94f else 1f,
-                                    label = "chipView"
-                                )
-                                Button(
-                                    onClick = {
-                                        soundEffects.playButtonClick()
-                                        hapticFeedback.lightTap()
-                                        navController?.navigate("teacher/students")
-                                    },
-                                    interactionSource = chipViewIs,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .graphicsLayer(scaleX = chipViewScale, scaleY = chipViewScale),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text("👀 View All", color = Color(0xFF4ECDC4), fontWeight = FontWeight.Bold)
-                                }
-
-                                val chipAddIs = MutableInteractionSource()
-                                val chipAddPressed by chipAddIs.collectIsPressedAsState()
-                                val chipAddScale by animateFloatAsState(
-                                    targetValue = if (chipAddPressed) 0.94f else 1f,
-                                    label = "chipAdd"
-                                )
-                                Button(
-                                    onClick = {
-                                        soundEffects.playButtonClick()
-                                        hapticFeedback.lightTap()
-                                        navController?.navigate("teacher/students/add")
-                                    },
-                                    interactionSource = chipAddIs,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .graphicsLayer(scaleX = chipAddScale, scaleY = chipAddScale),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f)),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text("➕ Add", color = Color.White, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Enhanced STUDENT ACTION BUTTONS
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    val viewStudentsIs = MutableInteractionSource()
-                    val viewStudentsPressed by viewStudentsIs.collectIsPressedAsState()
-                    val viewStudentsScale by animateFloatAsState(targetValue = if (viewStudentsPressed) 0.96f else 1f, label = "viewStudentsScale")
-                    Card(
-                        onClick = {
-                            soundEffects.playButtonClick()
-                            hapticFeedback.lightTap()
-                            navController?.navigate("teacher/students")
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .graphicsLayer(scaleX = viewStudentsScale, scaleY = viewStudentsScale),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFF6B6B)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                        interactionSource = viewStudentsIs
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("👥", style = MaterialTheme.typography.headlineMedium)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "View Students",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    val addStudentIs = MutableInteractionSource()
-                    val addStudentPressed by addStudentIs.collectIsPressedAsState()
-                    val addStudentScale by animateFloatAsState(targetValue = if (addStudentPressed) 0.96f else 1f, label = "addStudentScale")
-                    Card(
-                        onClick = {
-                            soundEffects.playButtonClick()
-                            hapticFeedback.lightTap()
-                            navController?.navigate("teacher/students/add")
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .graphicsLayer(scaleX = addStudentScale, scaleY = addStudentScale),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF6C63FF)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                        interactionSource = addStudentIs
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("➕", style = MaterialTheme.typography.headlineMedium)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Add Student",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-
-                // Enhanced PERFORMANCE BUTTONS
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    val perfIs = MutableInteractionSource()
-                    val perfPressed by perfIs.collectIsPressedAsState()
-                    val perfScale by animateFloatAsState(targetValue = if (perfPressed) 0.96f else 1f, label = "perfScale")
-                    Card(
-                        onClick = {
-                            soundEffects.playButtonClick()
-                            hapticFeedback.lightTap()
-                            navController?.navigate("teacher/class/performance/$teacherId")
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .graphicsLayer(scaleX = perfScale, scaleY = perfScale),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFB74D)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                        interactionSource = perfIs
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("📊", style = MaterialTheme.typography.headlineMedium)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Class Performance",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    val lbIs = MutableInteractionSource()
-                    val lbPressed by lbIs.collectIsPressedAsState()
-                    val lbScale by animateFloatAsState(targetValue = if (lbPressed) 0.96f else 1f, label = "lbScale")
-                    Card(
-                        onClick = {
-                            soundEffects.playButtonClick()
-                            hapticFeedback.lightTap()
-                            navController?.navigate("teacher/class/leaderboard")
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .graphicsLayer(scaleX = lbScale, scaleY = lbScale),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF48FB1)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                        interactionSource = lbIs
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("🏆", style = MaterialTheme.typography.headlineMedium)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Leaderboards",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-
-                // REPORTS CARD
-                run {
-                    val reportsCardIs = MutableInteractionSource()
-                    val pressed by reportsCardIs.collectIsPressedAsState()
-                    val scale by animateFloatAsState(targetValue = if (pressed) 0.99f else 1f, label = "cardScale2")
-                    ElevatedCard(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .graphicsLayer(scaleX = scale, scaleY = scale),
-                        shape = RoundedCornerShape(14.dp),
-                        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 3.dp, pressedElevation = 6.dp),
-                        interactionSource = reportsCardIs,
-                        onClick = {}
-                    ) {
-                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Assessment, contentDescription = null)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("AI Reports & Insights", style = MaterialTheme.typography.titleMedium)
-                                Text("Analyze student and class performance with charts and tips", color = Color.Gray)
-                            }
-                            val openIs = MutableInteractionSource()
-                            val openPressed by openIs.collectIsPressedAsState()
-                            val openScale by animateFloatAsState(targetValue = if (openPressed) 0.96f else 1f, label = "openScale")
-                            Button(
-                                onClick = { navController?.navigate("teacher/reports/$teacherId") },
-                                interactionSource = openIs,
-                                modifier = Modifier.graphicsLayer(scaleX = openScale, scaleY = openScale)
-                            ) {
-                                Text("Open")
-                            }
-                        }
-                    }
-                }
-
-                // STUDENT STATISTICS CARD
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Text(
-                            text = "📊 Class Statistics",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
-                        )
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            // Total Students
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("👥", fontSize = 32.sp)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                if (isLoadingStats) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(24.dp),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                } else {
-                                    Text(
-                                        text = "${classStats.totalStudents}",
-                                        style = MaterialTheme.typography.headlineMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                Text(
-                                    text = "Total Students",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                )
-                            }
-                            
-                            // Active Students
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("🌟", fontSize = 32.sp)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                if (isLoadingStats) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(24.dp),
-                                        color = Color(0xFF4CAF50)
-                                    )
-                                } else {
-                                    Text(
-                                        text = "${classStats.activeStudents}",
-                                        style = MaterialTheme.typography.headlineMedium,
-                                        color = Color(0xFF4CAF50),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                Text(
-                                    text = "Active Today",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                )
-                            }
-                            
-                            // Average Progress
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("📈", fontSize = 32.sp)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                if (isLoadingStats) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(24.dp),
-                                        color = Color(0xFFFF9800)
-                                    )
-                                } else {
-                                    Text(
-                                        text = "${(classStats.averageProgress * 100).toInt()}%",
-                                        style = MaterialTheme.typography.headlineMedium,
-                                        color = Color(0xFFFF9800),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                Text(
-                                    text = "Avg Progress",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // LOGOUT BUTTON
-                val logoutIs = MutableInteractionSource()
-                val logoutPressed by logoutIs.collectIsPressedAsState()
-                val logoutScale by animateFloatAsState(targetValue = if (logoutPressed) 0.96f else 1f, label = "logoutScale")
-                
-                Button(
-                    onClick = {
-                        soundEffects.playButtonClick()
-                        hapticFeedback.lightTap()
-                        showLogoutDialog = true
-                    },
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .graphicsLayer(scaleX = logoutScale, scaleY = logoutScale),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
-                    interactionSource = logoutIs
+                        .fillMaxSize()
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Welcome Card
+                    Card(
+                        modifier = Modifier.fillMaxWidth().offset(y = bounceOffset.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        elevation = CardDefaults.cardElevation(12.dp),
+                        shape = RoundedCornerShape(24.dp)
                     ) {
-                        Icon(
-                        Icons.Default.ExitToApp,
-                            contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
+                        Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("👋", fontSize = 40.sp, modifier = Modifier.rotate(wiggleAngle))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Welcome, $teacherName!", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFD32F2F))
+                            Text("Manage your classroom! 🎓", fontSize = 14.sp, color = Color.Gray)
+                        }
+                    }
+
+                    // Stats Row
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TeacherStatCard(
+                            modifier = Modifier.weight(1f),
+                            emoji = "👥",
+                            value = if (isLoadingStats) "..." else "${classStats.totalStudents}",
+                            label = "Students",
+                            color = Color(0xFF4ECDC4)
+                        )
+                        TeacherStatCard(
+                            modifier = Modifier.weight(1f),
+                            emoji = "🌟",
+                            value = if (isLoadingStats) "..." else "${classStats.activeStudents}",
+                            label = "Active",
+                            color = Color(0xFF4CAF50)
+                        )
+                        TeacherStatCard(
+                            modifier = Modifier.weight(1f),
+                            emoji = "📈",
+                            value = if (isLoadingStats) "..." else "${(classStats.averageProgress * 100).toInt()}%",
+                            label = "Progress",
+                            color = Color(0xFFFF9800)
+                        )
+                    }
+
+                    // Action Cards
+                    TeacherActionCard("View Students", "👥", Color(0xFFFF6B6B)) {
+                        toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+                        navController?.navigate("teacher/students")
+                    }
+                    
+                    TeacherActionCard("Add Student", "➕", Color(0xFF6C63FF)) {
+                        toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+                        navController?.navigate("teacher/students/add")
+                    }
+                    
+                    TeacherActionCard("Class Performance", "📊", Color(0xFFFFB74D)) {
+                        toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+                        navController?.navigate("teacher/class/performance/$teacherId")
+                    }
+                    
+                    TeacherActionCard("Leaderboards", "🏆", Color(0xFFF48FB1)) {
+                        toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+                        navController?.navigate("teacher/class/leaderboard")
+                    }
+                    
+                    TeacherActionCard("Reports", "📈", Color(0xFF4ECDC4)) {
+                        toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+                        navController?.navigate("teacher/reports/$teacherId")
+                    }
+
+                    // Logout Button
+                    val logoutInteraction = remember { MutableInteractionSource() }
+                    val logoutPressed by logoutInteraction.collectIsPressedAsState()
+                    val logoutScale by animateFloatAsState(
+                        targetValue = if (logoutPressed) 0.95f else 1f,
+                        animationSpec = spring(dampingRatio = 0.5f), label = "logout"
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "🚪 Logout",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleMedium
-                    )
+
+                    Button(
+                        onClick = {
+                            toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+                            showLogoutDialog = true
+                        },
+                        modifier = Modifier.fillMaxWidth().height(56.dp).scale(logoutScale),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
+                        interactionSource = logoutInteraction
+                    ) {
+                        Text("🚪", fontSize = 22.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Logout", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
-    } // ✅ properly closes Scaffold
+    }
 
-    // Logout confirmation dialog
     if (showLogoutDialog) {
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
-            title = { Text("🚪 Logout") },
-            text = { Text("Are you sure you want to logout? You'll need to sign in again to access your teacher account.") },
+            title = { Row { Text("🚪", fontSize = 28.sp); Spacer(Modifier.width(8.dp)); Text("Logout?") } },
+            text = { Text("Are you sure you want to logout?") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        showLogoutDialog = false
-                        authViewModel?.signOut()
-                        navController?.navigate("teacherLogin") {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    }
-                ) {
-                    Text("Logout", color = Color(0xFFF44336))
-                }
+                TextButton(onClick = {
+                    showLogoutDialog = false
+                    authViewModel?.signOut()
+                    navController?.navigate("teacherLogin") { popUpTo(0) { inclusive = true } }
+                }) { Text("Logout", color = Color(0xFFF44336), fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
-                TextButton(
-                    onClick = { showLogoutDialog = false }
-                ) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showLogoutDialog = false }) { Text("Stay") }
             }
         )
+    }
+}
+
+@Composable
+fun TeacherStatCard(modifier: Modifier, emoji: String, value: String, label: String, color: Color) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = color),
+        elevation = CardDefaults.cardElevation(8.dp),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(emoji, fontSize = 26.sp)
+            Text(value, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+            Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        }
+    }
+}
+
+@Composable
+fun TeacherActionCard(title: String, emoji: String, color: Color, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = 0.5f), label = "action"
+    )
+
+    Card(
+        modifier = Modifier.fillMaxWidth().height(70.dp).scale(scale),
+        colors = CardDefaults.cardColors(containerColor = color),
+        onClick = onClick,
+        interactionSource = interactionSource,
+        elevation = CardDefaults.cardElevation(8.dp),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(emoji, fontSize = 32.sp)
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        }
     }
 }

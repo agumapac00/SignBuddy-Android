@@ -186,12 +186,12 @@ enum class GameState {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel: MultiplayerViewModel? = null, username: String = "") {
+    // Kindergarten-friendly colors
     val gradientBackground = Brush.verticalGradient(
         colors = listOf(
-            Color(0xFFFFE0B2), // Warm orange
-            Color(0xFFFFF8E1), // Cream
-            Color(0xFFE8F5E8), // Light green
-            Color(0xFFE3F2FD)  // Light blue
+            Color(0xFFFFB6C1), // Light pink
+            Color(0xFFFFD1DC), // Pale pink
+            Color(0xFFFFF0F5)  // Lavender blush
         )
     )
     
@@ -423,7 +423,7 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
         }
     }
 
-    // Use 640 if that's your trained imgsz; change to 320 if you want faster inference
+    // Keep 640 input to match the model's training resolution for accuracy
     val inputSize = 640
     val imageProcessor = remember {
         ImageProcessor.Builder()
@@ -438,11 +438,14 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
 
     // Note: Camera setup is handled in CameraPreview component
     
-    // Game questions
+    // Game questions - use room code as seed so both players get same questions
     var gameSeed by remember { mutableStateOf(0) }
-    val letterQuestions = remember(selectedQuestionType, gameSeed) {
-        // Generate 10 unique random letters A-Z for this session
-        val letters = ('A'..'Z').shuffled().take(10)
+    val roomCodeSeed = multiplayerGameState.roomCode.hashCode()
+    
+    val letterQuestions = remember(selectedQuestionType, gameSeed, roomCodeSeed) {
+        // Use room code + gameSeed as seed for consistent random across both players
+        val random = java.util.Random((roomCodeSeed + gameSeed).toLong())
+        val letters = ('A'..'Z').toList().shuffled(random).take(10)
         letters.mapIndexed { index, ch ->
             GameQuestion(
                 id = "L${index + 1}",
@@ -473,9 +476,10 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
         "FOG" to "F-O-G"
     )
     
-    val wordQuestions = remember(selectedQuestionType, gameSeed) {
-        // Generate 10 random words from the pool for this session
-        wordPool.shuffled().take(10).mapIndexed { index, (word, answer) ->
+    val wordQuestions = remember(selectedQuestionType, gameSeed, roomCodeSeed) {
+        // Use room code + gameSeed as seed for consistent random across both players
+        val random = java.util.Random((roomCodeSeed + gameSeed).toLong())
+        wordPool.shuffled(random).take(10).mapIndexed { index, (word, answer) ->
             GameQuestion(
                 id = "W${index + 1}",
                 type = QuestionType.WORD,
@@ -770,7 +774,15 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("🎮 Multiplayer Quiz", style = MaterialTheme.typography.titleLarge) },
+                title = { 
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🎮", fontSize = 26.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Play Together!", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("👫", fontSize = 22.sp)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = { 
                         soundEffects.playButtonClick()
@@ -818,11 +830,11 @@ fun MultiplayerScreen(navController: NavController? = null, multiplayerViewModel
                             }
                         }
                     }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Text("⬅️", fontSize = 26.sp)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
+                    containerColor = Color(0xFFE91E63),
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White
                 )
@@ -2093,7 +2105,7 @@ fun CameraPreview(
 
         // ImageAnalysis: keep latest frames only and analyze on background executor
         val imageAnalyzer = ImageAnalysis.Builder()
-            .setTargetResolution(Size(inputSize, inputSize))
+            .setTargetResolution(Size(320, 320))
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
 
@@ -2105,15 +2117,16 @@ fun CameraPreview(
             inputSize = inputSize,
             useFrontCamera = useFrontCamera,
             context = context,
-            onPrediction = { prediction: String ->
+            onPrediction = { prediction: String, confidence: Float ->
                 Log.d("CameraPreview", "=== PREDICTION RECEIVED ===")
                 Log.d("CameraPreview", "Prediction: '$prediction'")
+                Log.d("CameraPreview", "Confidence: $confidence")
                 Log.d("CameraPreview", "Is empty: ${prediction.isNullOrEmpty()}")
                 Log.d("CameraPreview", "Is not 'nothing': ${prediction != "nothing"}")
                 
                 if (!prediction.isNullOrEmpty() && prediction != "nothing") {
                     Log.d("CameraPreview", "Calling onSignDetected with: '$prediction'")
-                    onSignDetected(prediction, 0.8f)
+                    onSignDetected(prediction, confidence)
                 } else {
                     Log.d("CameraPreview", "Prediction ignored - empty or 'nothing'")
                 }
@@ -2218,17 +2231,18 @@ fun CameraPreview(
 
 // Removed unused preprocessImageForModel function - using MultiplayerHandSignAnalyzer instead
 
-// Load TFLite model from assets (CPU-only)
+// Load TFLite model from assets with NNAPI acceleration
 private fun loadPracticeModel(context: Context): Interpreter? {
     return try {
-        Log.d("MultiplayerScreen", "Starting model loading...")
         val model = loadModelFile(context, "asl_model.tflite")
-        Log.d("MultiplayerScreen", "Model file loaded, size: ${model.capacity()}")
-        val interpreter = Interpreter(model)
-        val inputShape = interpreter.getInputTensor(0).shape()
-        val outputShape = interpreter.getOutputTensor(0).shape()
-        Log.d("MultiplayerScreen", "Model loaded successfully. Input: ${inputShape.contentToString()}, Output: ${outputShape.contentToString()}")
-        interpreter
+        val options = Interpreter.Options().apply {
+            setNumThreads(4)
+            try {
+                val nnApiDelegate = org.tensorflow.lite.nnapi.NnApiDelegate()
+                addDelegate(nnApiDelegate)
+            } catch (e: Exception) { }
+        }
+        Interpreter(model, options)
     } catch (e: Exception) {
         Log.e("MultiplayerScreen", "Failed to load model", e)
         null
@@ -2261,11 +2275,11 @@ class MultiplayerHandSignAnalyzer(
     private val inputSize: Int,
     private val useFrontCamera: Boolean,
     private val context: Context,
-    private val onPrediction: (String) -> Unit
+    private val onPrediction: (String, Float) -> Unit
 ) : ImageAnalysis.Analyzer {
     private val handler = Handler(Looper.getMainLooper())
     private var lastAnalysisTime = 0L
-    private val analysisInterval = 300L // ms
+    private val analysisInterval = 1500L // ms - analyze every 1.5 seconds for smooth camera
     private val TAG = "MultiplayerHandSignAnalyzer"
     private var frameCount = 0
     // ASL labels: 0-25 A-Z, 26 nothing
@@ -2274,9 +2288,13 @@ class MultiplayerHandSignAnalyzer(
     private val numClasses = 27
     private val numFeatures = 4 + numClasses // 31
     private val numDetections = 8400
-    private val confThreshold = 0.3f // raw detection threshold
-    private val feedbackThreshold = 0.75f // FINAL confidence threshold (75%)
+    private val confThreshold = 0.30f // raw detection threshold (filter noise early)
+    private val feedbackThreshold = 0.70f // FINAL confidence threshold (70%)
     private val iouThreshold = 0.5f
+    
+    // Single high-confidence detection (no consecutive required at 70%+)
+    @Volatile private var lastPredictionTime = 0L
+    private val predictionCooldown = 2500L // 2.5 sec cooldown after prediction to avoid double
 
     // Reusable buffers to reduce allocations and GC pressure
     private val inputBuffer = ByteBuffer.allocateDirect(1 * inputSize * inputSize * 3 * 4).apply {
@@ -2291,38 +2309,26 @@ class MultiplayerHandSignAnalyzer(
 
     override fun analyze(image: ImageProxy) {
         frameCount++
-        Log.d(TAG, "ANALYZE CALLED #$frameCount - Image: ${image.width}x${image.height}")
         
         val currentTime = System.currentTimeMillis()
         if (currentTime - lastAnalysisTime < analysisInterval) {
-            Log.d(TAG, "Skipping analysis - too soon (${currentTime - lastAnalysisTime}ms)")
             image.close()
             return
         }
         lastAnalysisTime = currentTime
-
-        Log.d(TAG, "=== ANALYZING IMAGE ===")
-        Log.d(TAG, "Model interpreter: ${modelInterpreter != null}")
-        Log.d(TAG, "Image format: ${image.format}, width: ${image.width}, height: ${image.height}")
         
         if (modelInterpreter == null) {
-            Log.e(TAG, "Model interpreter is null - cannot analyze")
             image.close()
-            handler.post { onPrediction("") }
+            handler.post { onPrediction("", 0f) }
             return
         }
 
         try {
             // Handle rotation and flip for front/back camera
-            // Front camera: 270 degrees rotation + horizontal flip
-            // Back camera: 90 degrees rotation (no flip needed)
             val rotationDegrees = if (useFrontCamera) 270 else 90
-            Log.d(TAG, "Converting image to bitmap with rotation: $rotationDegrees")
             var bitmap = image.toBitmap(rotationDegrees)
-            Log.d(TAG, "Bitmap created successfully: ${bitmap.width}x${bitmap.height}")
             if (useFrontCamera) {
                 bitmap = flipHorizontally(bitmap)
-                Log.d(TAG, "Bitmap flipped for front camera")
             }
 
             // Prepare TensorImage and process
@@ -2353,22 +2359,16 @@ class MultiplayerHandSignAnalyzer(
             }
             
             synchronized(interpreterLock) {
-                // Double-check after acquiring lock - interpreter might have been closed
                 if (modelInterpreter == null) {
                     image.close()
                     return
                 }
                 try {
-                    Log.d(TAG, "Running model inference...")
                     modelInterpreter!!.run(inputBuffer, outputArray3D)
-                    Log.d(TAG, "Model inference completed successfully")
                 } catch (e: IllegalStateException) {
-                    // Interpreter was closed/released during inference
-                    Log.w(TAG, "Interpreter closed during inference", e)
                     image.close()
                     return
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error during model inference", e)
                     image.close()
                     return
                 }
@@ -2384,11 +2384,6 @@ class MultiplayerHandSignAnalyzer(
                     }
                 }
             }
-            
-            // Log some sample output values to understand the format
-            Log.d(TAG, "Output array shape: [${outputArray3D.size}][${outputArray3D[0].size}][${outputArray3D[0][0].size}]")
-            Log.d(TAG, "Sample output values: ${outputFlat.take(10).joinToString(", ")}")
-            Log.d(TAG, "Max output value: ${outputFlat.maxOrNull()}, Min output value: ${outputFlat.minOrNull()}")
             
             // Post-process: decode detections
             val boundingBoxes = mutableListOf<BoundingBox>()
@@ -2421,10 +2416,8 @@ class MultiplayerHandSignAnalyzer(
                 }
             }
 
-            Log.d(TAG, "Detected ${boundingBoxes.size} bounding boxes")
             if (boundingBoxes.isEmpty()) {
-                Log.d(TAG, "No bounding boxes detected - returning empty prediction")
-                handler.post { onPrediction("") }
+                handler.post { onPrediction("", 0f) }
                 image.close()
                 return
             }
@@ -2434,11 +2427,19 @@ class MultiplayerHandSignAnalyzer(
 
             // Pick highest conf box
             val bestBox = selectedBoxes.maxByOrNull { it.cnf }
-            val predictedLetter = if (bestBox != null && bestBox.cnf > feedbackThreshold) bestBox.clsName else ""
-            Log.d(TAG, "Selected boxes after NMS: ${selectedBoxes.size}")
-            Log.d(TAG, "Best box: $bestBox")
-            Log.d(TAG, "Final prediction: '$predictedLetter' (conf: ${bestBox?.cnf ?: 0f}, threshold: $feedbackThreshold)")
-            handler.post { onPrediction(predictedLetter) }
+            
+            // Check if we're in cooldown period (avoid double prediction)
+            val now = System.currentTimeMillis()
+            val inCooldown = (now - lastPredictionTime) < predictionCooldown
+            
+            val predictedLetter = if (bestBox != null && bestBox.cnf >= feedbackThreshold && !inCooldown) {
+                lastPredictionTime = now // Start cooldown
+                bestBox.clsName
+            } else {
+                ""
+            }
+            
+            handler.post { onPrediction(predictedLetter, bestBox?.cnf ?: 0f) }
             // Close image after successful analysis
             image.close()
 
@@ -2446,23 +2447,18 @@ class MultiplayerHandSignAnalyzer(
             Log.e(TAG, "Out of memory during analysis", e)
             // Force garbage collection
             System.gc()
-            handler.post { onPrediction("") }
-        } catch (e: OutOfMemoryError) {
-            Log.e(TAG, "Out of memory during analysis", e)
-            // Force garbage collection
-            System.gc()
-            handler.post { onPrediction("") }
+            handler.post { onPrediction("", 0f) }
         } catch (e: IllegalStateException) {
             // Interpreter or camera was closed
             Log.w(TAG, "Illegal state during analysis (likely closed)", e)
-            handler.post { onPrediction("") }
+            handler.post { onPrediction("", 0f) }
         } catch (e: NullPointerException) {
             // Something became null during analysis
             Log.w(TAG, "Null pointer during analysis", e)
-            handler.post { onPrediction("") }
+            handler.post { onPrediction("", 0f) }
         } catch (e: Exception) {
             Log.e(TAG, "Error in analyze", e)
-            handler.post { onPrediction("") }
+            handler.post { onPrediction("", 0f) }
         } finally {
             // Always close the image, even if there was an error
             try {

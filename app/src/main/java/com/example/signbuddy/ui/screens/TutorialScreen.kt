@@ -1,56 +1,60 @@
 package com.example.signbuddy.ui.screens
 
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.speech.tts.TextToSpeech
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Help
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.getValue
-import kotlinx.coroutines.launch
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.example.signbuddy.services.ProgressTrackingService
 import com.example.signbuddy.R
-import com.example.signbuddy.ui.components.*
+import com.example.signbuddy.services.ProgressTrackingService
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TutorialScreen(navController: NavController? = null, username: String = "") {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     
-    // Gamification elements
-    val soundEffects = rememberSoundEffects()
-    val hapticFeedback = rememberHapticFeedback()
+    // Sound
+    val toneGenerator = remember { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100) }
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
     var narrationEnabled by remember { mutableStateOf(true) }
 
-    // 🔹 Initialize TTS
     LaunchedEffect(Unit) {
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale.US
+                tts?.setSpeechRate(0.9f)
             }
         }
     }
@@ -59,422 +63,485 @@ fun TutorialScreen(navController: NavController? = null, username: String = "") 
         onDispose {
             tts?.stop()
             tts?.shutdown()
+            toneGenerator.release()
         }
     }
 
-    // 🔹 Letters
+    // Letters
     val letters = ('A'..'Z').map { it.toString() }
     var index by remember { mutableStateOf(0) }
     val total = letters.size
     
-    // Progress tracking
+    // Progress
     val progressTrackingService = remember { ProgressTrackingService() }
     var sessionStartTime by remember { mutableStateOf(System.currentTimeMillis()) }
     var lettersCompleted by remember { mutableStateOf(0) }
-    var perfectSigns by remember { mutableStateOf(0) }
-    var mistakes by remember { mutableStateOf(0) }
     var showProgressDialog by remember { mutableStateOf(false) }
     var progressUpdate by remember { mutableStateOf<ProgressTrackingService.ProgressUpdate?>(null) }
-    val scope = rememberCoroutineScope()
-    val progress = (index + 1).toFloat() / total.toFloat()
+    var showCelebration by remember { mutableStateOf(false) }
 
-    var unlockedBeginnerBadge by remember { mutableStateOf(false) }
-
-    // 🔹 Map letters to images (sign_a, sign_b … sign_z)
-    val letterImages = mapOf(
-        "A" to R.drawable.sign_a,
-        "B" to R.drawable.sign_b,
-        "C" to R.drawable.sign_c,
-        "D" to R.drawable.sign_d,
-        "E" to R.drawable.sign_e,
-        "F" to R.drawable.sign_f,
-        "G" to R.drawable.sign_g,
-        "H" to R.drawable.sign_h,
-        "I" to R.drawable.sign_i,
-        "J" to R.drawable.sign_j,
-        "K" to R.drawable.sign_k,
-        "L" to R.drawable.sign_l,
-        "M" to R.drawable.sign_m,
-        "N" to R.drawable.sign_n,
-        "O" to R.drawable.sign_o,
-        "P" to R.drawable.sign_p,
-        "Q" to R.drawable.sign_q,
-        "R" to R.drawable.sign_r,
-        "S" to R.drawable.sign_s,
-        "T" to R.drawable.sign_t,
-        "U" to R.drawable.sign_u,
-        "V" to R.drawable.sign_v,
-        "W" to R.drawable.sign_w,
-        "X" to R.drawable.sign_x,
-        "Y" to R.drawable.sign_y,
-        "Z" to R.drawable.sign_z
+    // Fun animations
+    val infiniteTransition = rememberInfiniteTransition(label = "fun")
+    
+    val bounceOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -10f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500, easing = EaseInOutQuad),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bounce"
+    )
+    
+    val wiggleAngle by infiniteTransition.animateFloat(
+        initialValue = -5f,
+        targetValue = 5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(300),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "wiggle"
+    )
+    
+    val sparkleAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(400),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "sparkle"
+    )
+    
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
     )
 
-    // 🔹 Speak current letter
+    // Letter change animation
+    var letterVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(index) {
+        letterVisible = false
+        delay(100)
+        letterVisible = true
+    }
+
+    // Speak letter
     LaunchedEffect(index, narrationEnabled) {
         if (narrationEnabled) {
-            tts?.speak(letters[index], TextToSpeech.QUEUE_FLUSH, null, null)
+            tts?.speak("Letter ${letters[index]}", TextToSpeech.QUEUE_FLUSH, null, null)
         }
     }
 
-    // 🔹 Animation for image scaling
-    val scale = remember { Animatable(1f) }
-    LaunchedEffect(index) {
-        scale.animateTo(
-            targetValue = 1.05f,
-            animationSpec = tween(200, easing = LinearEasing)
-        )
-        scale.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(300, easing = LinearEasing)
-        )
-    }
-
-    // 🔹 Background
-    val gradientBackground = Brush.verticalGradient(
-        colors = listOf(
-            Color(0xFFFFE0B2), // Warm orange
-            Color(0xFFFFF8E1), // Cream
-            Color(0xFFE8F5E8), // Light green
-            Color(0xFFE3F2FD)  // Light blue
-        )
+    // Letter images
+    val letterImages = mapOf(
+        "A" to R.drawable.sign_a, "B" to R.drawable.sign_b, "C" to R.drawable.sign_c,
+        "D" to R.drawable.sign_d, "E" to R.drawable.sign_e, "F" to R.drawable.sign_f,
+        "G" to R.drawable.sign_g, "H" to R.drawable.sign_h, "I" to R.drawable.sign_i,
+        "J" to R.drawable.sign_j, "K" to R.drawable.sign_k, "L" to R.drawable.sign_l,
+        "M" to R.drawable.sign_m, "N" to R.drawable.sign_n, "O" to R.drawable.sign_o,
+        "P" to R.drawable.sign_p, "Q" to R.drawable.sign_q, "R" to R.drawable.sign_r,
+        "S" to R.drawable.sign_s, "T" to R.drawable.sign_t, "U" to R.drawable.sign_u,
+        "V" to R.drawable.sign_v, "W" to R.drawable.sign_w, "X" to R.drawable.sign_x,
+        "Y" to R.drawable.sign_y, "Z" to R.drawable.sign_z
     )
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("📚 Tutorial: A–Z Signs", style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = {
-                    IconButton(onClick = { 
-                        navController?.navigate("studentDashboard/$username") {
-                            popUpTo("studentDashboard/{username}") { inclusive = false }
-                            launchSingleTop = true
-                        }
-                    }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    // Help/Info Button
-                    IconButton(
-                        onClick = {
-                            soundEffects.playButtonClick()
-                            hapticFeedback.lightTap()
-                            // Show help dialog or navigate to help screen
-                        }
-                    ) {
-                        Icon(
-                            Icons.Default.Help,
-                            contentDescription = "Help",
-                            tint = Color.White
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
-                    actionIconContentColor = Color.White
+    // Kindergarten colors
+    val sunYellow = Color(0xFFFFE066)
+    val skyBlue = Color(0xFF87CEEB)
+    val grassGreen = Color(0xFF90EE90)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        sunYellow,
+                        Color(0xFFFFF5CC),
+                        Color(0xFFFFFFF0)
+                    )
                 )
             )
+    ) {
+        // Decorations
+        Box(modifier = Modifier.fillMaxSize()) {
+            Text("🌞", fontSize = 50.sp, modifier = Modifier.offset(x = 300.dp, y = 20.dp).rotate(wiggleAngle))
+            Text("☁️", fontSize = 40.sp, modifier = Modifier.offset(x = 20.dp, y = 30.dp).graphicsLayer { alpha = 0.7f })
+            Text("⭐", fontSize = 24.sp, modifier = Modifier.offset(x = 40.dp, y = 200.dp).graphicsLayer { alpha = sparkleAlpha })
+            Text("🌟", fontSize = 22.sp, modifier = Modifier.offset(x = 340.dp, y = 300.dp).graphicsLayer { alpha = sparkleAlpha })
+            Text("✨", fontSize = 20.sp, modifier = Modifier.offset(x = 30.dp, y = 500.dp).graphicsLayer { alpha = sparkleAlpha })
+            Text("🦋", fontSize = 28.sp, modifier = Modifier.offset(x = 330.dp, y = 550.dp).rotate(wiggleAngle))
         }
-    ) { innerPadding ->
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(gradientBackground)
-                .padding(innerPadding)
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 🔹 Enhanced Header with Mascot
+            // Top bar
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.padding(bottom = 2.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                AnimatedMascot(
-                    isHappy = true,
-                    isCelebrating = false,
-                    size = 48
-                )
-                Column {
-                    Text(
-                        text = "📚 Learn the Alphabet!",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
+                IconButton(onClick = {
+                    toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+                    navController?.navigate("studentDashboard/$username") {
+                        popUpTo("studentDashboard/{username}") { inclusive = false }
+                    }
+                }) {
+                    Text("⬅️", fontSize = 28.sp)
+                }
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("📚", fontSize = 24.sp, modifier = Modifier.rotate(wiggleAngle))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Learn ABC!", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5D4E37))
+                }
+                
+                IconButton(onClick = {
+                    toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+                    narrationEnabled = !narrationEnabled
+                }) {
+                    Text(if (narrationEnabled) "🔊" else "🔇", fontSize = 28.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Progress bar
+            Card(
+                modifier = Modifier.fillMaxWidth().shadow(8.dp, RoundedCornerShape(20.dp)),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🎯", fontSize = 20.sp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Progress", fontWeight = FontWeight.Bold, color = Color(0xFF5D4E37))
+                        }
+                        Text(
+                            "${index + 1} / $total",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = Color(0xFFFF9800)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    val animatedProgress by animateFloatAsState(
+                        targetValue = (index + 1f) / total,
+                        animationSpec = tween(500),
+                        label = "progress"
                     )
-                    Text(
-                        text = "Let's discover all the letters in sign language! 🌟",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
+                    LinearProgressIndicator(
+                        progress = { animatedProgress },
+                        modifier = Modifier.fillMaxWidth().height(14.dp).clip(RoundedCornerShape(7.dp)),
+                        color = Color(0xFF4CAF50),
+                        trackColor = Color(0xFFE8F5E9)
                     )
                 }
             }
 
-            // 🔹 Enhanced Image Display with Card
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Main letter card
             val currentLetter = letters[index]
             val imageRes = letterImages[currentLetter]
 
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                shape = RoundedCornerShape(20.dp)
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .offset(y = bounceOffset.dp)
+                    .shadow(16.dp, RoundedCornerShape(28.dp)),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = "Letter $currentLetter",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    if (imageRes != null) {
-                        Image(
-                            painter = painterResource(id = imageRes),
-                            contentDescription = "Sign for $currentLetter",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height((250 * scale.value).dp) // Animate size
-                                .clip(RoundedCornerShape(12.dp)),
-                            contentScale = ContentScale.Fit
+                    // Letter badge
+                    Box(
+                        modifier = Modifier
+                            .size(90.dp)
+                            .scale(pulseScale)
+                            .background(
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        Color(0xFFFF9800),
+                                        Color(0xFFFFB74D)
+                                    )
+                                ),
+                                CircleShape
+                            )
+                            .shadow(8.dp, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            currentLetter,
+                            fontSize = 50.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
                         )
                     }
-                    
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Try making this sign with your hands! 🤟",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
+
+                    // Sign image
+                    AnimatedVisibility(
+                        visible = letterVisible,
+                        enter = fadeIn(tween(200)) + scaleIn(initialScale = 0.8f, animationSpec = tween(200)),
+                        exit = fadeOut(tween(100))
+                    ) {
+                        if (imageRes != null) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth().weight(1f),
+                                shape = RoundedCornerShape(20.dp),
+                                elevation = CardDefaults.cardElevation(8.dp)
+                            ) {
+                                Image(
+                                    painter = painterResource(id = imageRes),
+                                    contentDescription = "Sign for $currentLetter",
+                                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp)),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Instruction
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("🤟", fontSize = 26.sp, modifier = Modifier.rotate(wiggleAngle))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Try this sign!",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Color(0xFFE65100)
+                            )
+                        }
+                    }
                 }
             }
 
-            // 🔹 Progress Indicator
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Letter ${index + 1} of $total",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color(0xFF2E7D32),
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LinearProgressIndicator(
-                        progress = (index + 1).toFloat() / total.toFloat(),
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color(0xFF4CAF50),
-                        trackColor = Color(0xFFC8E6C9)
-                    )
-                }
-            }
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // 🔹 Enhanced Controls
+            // Navigation buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Button(
-                    onClick = { 
-                        soundEffects.playButtonClick()
-                        hapticFeedback.lightTap()
-                        if (index > 0) index-- 
-                    },
-                    enabled = index > 0,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF4ECDC4)
-                    ),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("⬅️ Previous", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (narrationEnabled) Color(0xFF4CAF50) else Color(0xFFE0E0E0)
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                ) {
-                    IconToggleButton(
-                        checked = narrationEnabled,
-                        onCheckedChange = { 
-                            soundEffects.playButtonClick()
-                            hapticFeedback.lightTap()
-                            narrationEnabled = it 
-                        }
-                    ) {
-                        Icon(
-                            imageVector = if (narrationEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
-                            contentDescription = "Narration Toggle",
-                            tint = if (narrationEnabled) Color.White else Color.Gray,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
+                // Previous
+                val prevInteraction = remember { MutableInteractionSource() }
+                val prevPressed by prevInteraction.collectIsPressedAsState()
+                val prevScale by animateFloatAsState(
+                    targetValue = if (prevPressed) 0.9f else 1f,
+                    animationSpec = spring(dampingRatio = 0.4f),
+                    label = "prev"
+                )
+                
                 Button(
                     onClick = {
-                        soundEffects.playButtonClick()
-                        hapticFeedback.lightTap()
+                        toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+                        if (index > 0) index--
+                    },
+                    enabled = index > 0,
+                    modifier = Modifier.weight(1f).height(60.dp).scale(prevScale),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = skyBlue,
+                        disabledContainerColor = Color.Gray.copy(alpha = 0.3f)
+                    ),
+                    interactionSource = prevInteraction
+                ) {
+                    Text("⬅️", fontSize = 24.sp)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Back", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+
+                // Next/Finish
+                val nextInteraction = remember { MutableInteractionSource() }
+                val nextPressed by nextInteraction.collectIsPressedAsState()
+                val nextScale by animateFloatAsState(
+                    targetValue = if (nextPressed) 0.9f else 1f,
+                    animationSpec = spring(dampingRatio = 0.4f),
+                    label = "next"
+                )
+                
+                Button(
+                    onClick = {
+                        toneGenerator.startTone(ToneGenerator.TONE_PROP_ACK, 150)
                         if (index < total - 1) {
                             lettersCompleted++
-                            perfectSigns++
                             index++
                         } else {
                             lettersCompleted++
-                            perfectSigns++
-                            unlockedBeginnerBadge = true
+                            showCelebration = true
                             
-                            // Track progress when tutorial is completed
                             if (username.isNotEmpty()) {
-                                android.util.Log.d("TutorialScreen", "=== TUTORIAL COMPLETE ===")
-                                android.util.Log.d("TutorialScreen", "Username: $username")
-                                android.util.Log.d("TutorialScreen", "Letters completed: $lettersCompleted")
-                                android.util.Log.d("TutorialScreen", "Perfect signs: $perfectSigns")
-                                android.util.Log.d("TutorialScreen", "Mistakes: $mistakes")
-                                
                                 scope.launch {
                                     val sessionResult = ProgressTrackingService.SessionResult(
                                         mode = "tutorial",
-                                        accuracy = 1.0f, // Tutorial is always 100% as it's just learning
+                                        accuracy = 1.0f,
                                         timeSpent = (System.currentTimeMillis() - sessionStartTime) / 1000,
                                         lettersCompleted = lettersCompleted,
-                                        perfectSigns = perfectSigns,
-                                        mistakes = mistakes
+                                        perfectSigns = lettersCompleted,
+                                        mistakes = 0
                                     )
-                                    
-                                    android.util.Log.d("TutorialScreen", "Calling updateProgress with username: $username")
-                                    
                                     progressTrackingService.updateProgress(username, sessionResult)
                                         .onSuccess { update ->
-                                            android.util.Log.d("TutorialScreen", "✅ Progress updated successfully!")
-                                            android.util.Log.d("TutorialScreen", "Achievements unlocked: ${update.achievementsUnlocked}")
-                                            android.util.Log.d("TutorialScreen", "XP gained: ${update.xpGained}")
-                                            android.util.Log.d("TutorialScreen", "Score gained: ${update.scoreGained}")
-                                            
-                                            if (update.achievementsUnlocked.isNotEmpty()) {
-                                                android.util.Log.d("TutorialScreen", "🎉 ${update.achievementsUnlocked.size} achievements unlocked!")
-                                                update.achievementsUnlocked.forEach { achievementId ->
-                                                    android.util.Log.d("TutorialScreen", "  - $achievementId")
-                                                }
-                                            } else {
-                                                android.util.Log.w("TutorialScreen", "⚠️ No achievements unlocked!")
-                                            }
-                                            
                                             progressUpdate = update
                                             showProgressDialog = true
                                         }
-                                        .onFailure { exception ->
-                                            android.util.Log.e("TutorialScreen", "❌ Failed to update progress", exception)
-                                            exception.printStackTrace()
-                                        }
                                 }
-                            } else {
-                                android.util.Log.w("TutorialScreen", "⚠️ Username is empty! Cannot save progress.")
                             }
                         }
                     },
-                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).height(60.dp).scale(nextScale),
+                    shape = RoundedCornerShape(18.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFFF6B6B)
+                        containerColor = if (index < total - 1) grassGreen else Color(0xFFFF9800)
                     ),
-                    modifier = Modifier.weight(1f)
+                    interactionSource = nextInteraction
                 ) {
                     Text(
-                        text = if (index < total - 1) "Next ➡️" else "Finish 🎉",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
+                        if (index < total - 1) "Next" else "Done!",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (index < total - 1) "➡️" else "🎉", fontSize = 24.sp)
                 }
-            }
-
-            // 🔹 Badge Unlock Dialog
-            if (unlockedBeginnerBadge) {
-                AlertDialog(
-                    onDismissRequest = { unlockedBeginnerBadge = false },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                unlockedBeginnerBadge = false
-                                navController?.navigate("studentDashboard/$username") {
-                                    popUpTo("tutorial") { inclusive = true }
-                                    launchSingleTop = true
-                                }
-                            }
-                        ) {
-                            Text("OK")
-                        }
-                    },
-                    title = {
-                        Text("🥇 Beginner Badge Unlocked!")
-                    },
-                    text = {
-                        Text("Congrats on completing the tutorial!")
-                    }
-                )
             }
         }
-    }
-    
-    // Progress Update Dialog
-    if (showProgressDialog && progressUpdate != null) {
-        AlertDialog(
-            onDismissRequest = { showProgressDialog = false },
-            title = { Text("🎉 Great Job!") },
-            text = {
-                Column {
-                    Text("You completed the tutorial!")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("XP Gained: ${progressUpdate!!.xpGained}")
-                    Text("Score Gained: ${progressUpdate!!.scoreGained}")
-                    if (progressUpdate!!.achievementsUnlocked.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Achievements Unlocked:")
-                        progressUpdate!!.achievementsUnlocked.forEach { achievementId ->
-                            val (title, description) = progressTrackingService.getAchievementDetails(achievementId)
-                            Text("• $title: $description", style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                    if (progressUpdate!!.levelUp) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("🎊 Level Up! You're now level ${progressUpdate!!.newLevel}!", 
-                            color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = { 
-                        showProgressDialog = false
-                        navController?.popBackStack()
-                    }
+
+        // Celebration overlay
+        AnimatedVisibility(
+            visible = showCelebration && !showProgressDialog,
+            enter = fadeIn() + scaleIn(),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.6f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier.padding(32.dp).shadow(24.dp, RoundedCornerShape(28.dp)),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
                 ) {
-                    Text("Continue")
+                    Column(
+                        modifier = Modifier.padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("🎉🎊🎉", fontSize = 48.sp)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("Amazing!", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF4CAF50))
+                        Text("You learned all 26 letters!", fontSize = 16.sp, color = Color.Gray, textAlign = TextAlign.Center)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        CircularProgressIndicator(color = Color(0xFFFF9800), modifier = Modifier.size(32.dp))
+                        Text("Saving...", fontSize = 12.sp, color = Color.Gray)
+                    }
                 }
             }
-        )
+        }
+
+        // Progress dialog
+        if (showProgressDialog && progressUpdate != null) {
+            AlertDialog(
+                onDismissRequest = { },
+                title = { 
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🏆", fontSize = 32.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Great Job!", fontWeight = FontWeight.Bold)
+                    }
+                },
+                text = {
+                    Column {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row {
+                                    Text("⭐ XP: ", fontWeight = FontWeight.Bold)
+                                    Text("+${progressUpdate!!.xpGained}", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                                }
+                                Row {
+                                    Text("🎯 Score: ", fontWeight = FontWeight.Bold)
+                                    Text("+${progressUpdate!!.scoreGained}", color = Color(0xFF2196F3), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        
+                        if (progressUpdate!!.achievementsUnlocked.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("🎖️ Achievements:", fontWeight = FontWeight.Bold)
+                            progressUpdate!!.achievementsUnlocked.forEach { id ->
+                                val (title, _) = progressTrackingService.getAchievementDetails(id)
+                                Text("• $title", fontSize = 14.sp, color = Color(0xFFFF9800))
+                            }
+                        }
+                        
+                        if (progressUpdate!!.levelUp) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("🚀", fontSize = 24.sp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Level Up! Level ${progressUpdate!!.newLevel}", fontWeight = FontWeight.Bold, color = Color(0xFFFF9800))
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showProgressDialog = false
+                            showCelebration = false
+                            navController?.navigate("studentDashboard/$username?tab=0") {
+                                popUpTo("tutorial/{username}") { inclusive = true }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                    ) {
+                        Text("🎮 Continue!", fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
+        }
     }
 }
